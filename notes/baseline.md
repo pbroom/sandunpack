@@ -1,5 +1,7 @@
 # Baseline
 
+Historical note: this file captures the original sibling-clone setup. The current control-repo layout vendors Sandpack under `vendor/sandpack/`; see `notes/control-repo-layout.md` for the active workflow.
+
 ## Workspace status
 
 - Root workspace repo initialized at `sandunpack/`.

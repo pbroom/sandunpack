@@ -2,7 +2,7 @@
 
 ## Scope resumed here
 
-- Added gated debug event emitters inside the local `sandpack/` fork for:
+- Added gated debug event emitters inside the vendored `vendor/sandpack/` fork for:
   - `sandpack-react` provider/client lifecycle
   - `sandpack-react` update scheduling and skipped-vs-applied preview updates
   - `sandpack-client` load/runtime lifecycle
@@ -10,11 +10,11 @@
 
 ## Files touched in the fork
 
-- `sandpack/sandpack-react/src/utils/debug.ts`
-- `sandpack/sandpack-react/src/contexts/utils/useClient.ts`
-- `sandpack/sandpack-client/src/utils/debug.ts`
-- `sandpack/sandpack-client/src/clients/index.ts`
-- `sandpack/sandpack-client/src/clients/runtime/index.ts`
+- `vendor/sandpack/sandpack-react/src/utils/debug.ts`
+- `vendor/sandpack/sandpack-react/src/contexts/utils/useClient.ts`
+- `vendor/sandpack/sandpack-client/src/utils/debug.ts`
+- `vendor/sandpack/sandpack-client/src/clients/index.ts`
+- `vendor/sandpack/sandpack-client/src/clients/runtime/index.ts`
 
 ## Workspace fixture touchpoint
 
@@ -23,8 +23,8 @@
 ## How to run the current repro
 
 1. Build the linked fork packages:
-   - `cd sandpack/sandpack-client && yarn build`
-   - `cd sandpack/sandpack-react && yarn build`
+   - `pnpm install:vendor`
+   - `pnpm build:vendor`
 2. Start a fresh fixture server:
    - `pnpm --filter minimal-startup-race-react exec vite --port 4273 --force`
 3. Open `http://localhost:4273/`.

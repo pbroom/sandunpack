@@ -4,7 +4,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const fixtureRoot = fileURLToPath(new URL('.', import.meta.url));
-const sandpackNodeModules = path.resolve(fixtureRoot, '../../sandpack/node_modules');
+const sandpackNodeModules = path.resolve(fixtureRoot, '../../vendor/sandpack/node_modules');
 
 export default defineConfig({
   plugins: [react()],

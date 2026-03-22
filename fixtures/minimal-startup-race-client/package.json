@@ -9,7 +9,7 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
-    "@codesandbox/sandpack-client": "link:../../sandpack/sandpack-client",
+    "@codesandbox/sandpack-client": "link:../../vendor/sandpack/sandpack-client",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

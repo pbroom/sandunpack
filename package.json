@@ -7,6 +7,8 @@
     "fixtures/*"
   ],
   "scripts": {
+    "install:vendor": "yarn --cwd vendor/sandpack install",
+    "build:vendor": "yarn --cwd vendor/sandpack workspace @codesandbox/sandpack-client build && yarn --cwd vendor/sandpack workspace @codesandbox/sandpack-react build && yarn --cwd vendor/sandpack workspace @codesandbox/sandpack-themes build",
     "build:fixtures": "pnpm -r --filter './fixtures/*' build",
     "check:fixtures": "pnpm -r --filter './fixtures/*' check",
     "dev:minimal-race-react": "pnpm --filter minimal-startup-race-react dev",

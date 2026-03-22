@@ -231,7 +231,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const fixtureRoot = fileURLToPath(new URL('.', import.meta.url));
-const sandpackNodeModules = path.resolve(fixtureRoot, '../../sandpack/node_modules');
+const sandpackNodeModules = path.resolve(fixtureRoot, '../../vendor/sandpack/node_modules');
 
 export default defineConfig({
   plugins: [react()],
@@ -291,9 +291,9 @@ FIXTURE_SPECS = {
     "minimal-startup-race-react": {
         "port": 4173,
         "dependencies": {
-            "@codesandbox/sandpack-client": "link:../../sandpack/sandpack-client",
-            "@codesandbox/sandpack-react": "link:../../sandpack/sandpack-react",
-            "@codesandbox/sandpack-themes": "link:../../sandpack/sandpack-themes",
+            "@codesandbox/sandpack-client": "link:../../vendor/sandpack/sandpack-client",
+            "@codesandbox/sandpack-react": "link:../../vendor/sandpack/sandpack-react",
+            "@codesandbox/sandpack-themes": "link:../../vendor/sandpack/sandpack-themes",
             "react": "^18.2.0",
             "react-dom": "^18.2.0",
         },
@@ -301,7 +301,7 @@ FIXTURE_SPECS = {
     "minimal-startup-race-client": {
         "port": 4174,
         "dependencies": {
-            "@codesandbox/sandpack-client": "link:../../sandpack/sandpack-client",
+            "@codesandbox/sandpack-client": "link:../../vendor/sandpack/sandpack-client",
             "react": "^18.2.0",
             "react-dom": "^18.2.0",
         },
@@ -309,9 +309,9 @@ FIXTURE_SPECS = {
     "timeout-restart-repro": {
         "port": 4175,
         "dependencies": {
-            "@codesandbox/sandpack-client": "link:../../sandpack/sandpack-client",
-            "@codesandbox/sandpack-react": "link:../../sandpack/sandpack-react",
-            "@codesandbox/sandpack-themes": "link:../../sandpack/sandpack-themes",
+            "@codesandbox/sandpack-client": "link:../../vendor/sandpack/sandpack-client",
+            "@codesandbox/sandpack-react": "link:../../vendor/sandpack/sandpack-react",
+            "@codesandbox/sandpack-themes": "link:../../vendor/sandpack/sandpack-themes",
             "react": "^18.2.0",
             "react-dom": "^18.2.0",
         },
@@ -319,9 +319,9 @@ FIXTURE_SPECS = {
     "color-kit-plane-api-repro": {
         "port": 4176,
         "dependencies": {
-            "@codesandbox/sandpack-client": "link:../../sandpack/sandpack-client",
-            "@codesandbox/sandpack-react": "link:../../sandpack/sandpack-react",
-            "@codesandbox/sandpack-themes": "link:../../sandpack/sandpack-themes",
+            "@codesandbox/sandpack-client": "link:../../vendor/sandpack/sandpack-client",
+            "@codesandbox/sandpack-react": "link:../../vendor/sandpack/sandpack-react",
+            "@codesandbox/sandpack-themes": "link:../../vendor/sandpack/sandpack-themes",
             "react": "^18.2.0",
             "react-dom": "^18.2.0",
         },
