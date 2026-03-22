@@ -1,0 +1,21 @@
+{
+  "packages": ["sandpack-client", "sandpack-react"],
+  "npmClient": "yarn",
+  "command": {
+    "version": {
+      "createRelease": "github",
+      "conventionalCommits": true,
+      "message": "chore: [skip ci] bump packages",
+      "ignoreChanges": [
+        "**/*.md",
+        "**/*.stories.mdx",
+        "**/*.stories.@(js|jsx|ts|tsx)"
+      ]
+    },
+    "publish": {
+      "conventionalCommits": true,
+      "message": "chore: [skip ci] bump packages"
+    }
+  },
+  "version": "2.20.0"
+}
