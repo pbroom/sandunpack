@@ -1,0 +1,20 @@
+{
+  "name": "sandunpack",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.16.1",
+  "workspaces": [
+    "fixtures/*"
+  ],
+  "scripts": {
+    "build:fixtures": "pnpm -r --filter './fixtures/*' build",
+    "check:fixtures": "pnpm -r --filter './fixtures/*' check",
+    "dev:minimal-race-react": "pnpm --filter minimal-startup-race-react dev",
+    "dev:minimal-race-client": "pnpm --filter minimal-startup-race-client dev",
+    "dev:timeout-restart": "pnpm --filter timeout-restart-repro dev",
+    "dev:heavy-repro": "pnpm --filter color-kit-plane-api-repro dev"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0"
+  }
+}

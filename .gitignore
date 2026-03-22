@@ -1,0 +1,11 @@
+.DS_Store
+.cursor/
+node_modules/
+dist/
+coverage/
+.turbo/
+.vite/
+*.log
+
+# Nested Sandpack fork stays out of the root workspace repo.
+/sandpack/

@@ -1,0 +1,25 @@
+{
+  "name": "minimal-startup-race-react",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 4173",
+    "build": "tsc --noEmit && vite build",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@codesandbox/sandpack-client": "link:../../sandpack/sandpack-client",
+    "@codesandbox/sandpack-react": "link:../../sandpack/sandpack-react",
+    "@codesandbox/sandpack-themes": "link:../../sandpack/sandpack-themes",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.79",
+    "@types/react-dom": "^18.2.25",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "^5.8.3",
+    "vite": "^7.1.3"
+  }
+}
