@@ -8,7 +8,7 @@ import {
   useSandpack,
 } from '@codesandbox/sandpack-react';
 import { sandpackDark } from '@codesandbox/sandpack-themes';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const PREVIEW_SOURCE = 'minimal-startup-race-react-preview';
 const BLANK_LABEL = 'blank-template';
@@ -74,6 +74,7 @@ function RaceController({
   onLog,
 }: RunControllerProps) {
   const { sandpack, listen } = useSandpack();
+  const lastScheduledNonce = useRef(0);
 
   useEffect(() => {
     onStatus(sandpack.status);
@@ -86,10 +87,11 @@ function RaceController({
   }, [listen, onLog]);
 
   useEffect(() => {
-    if (runNonce === 0) {
+    if (runNonce === 0 || lastScheduledNonce.current === runNonce) {
       return;
     }
 
+    lastScheduledNonce.current = runNonce;
     onLog('sequence', `nonce=${runNonce} delay=${delayMs} burst=${burstCount}`);
     const timer = window.setTimeout(() => {
       const labels = Array.from({ length: burstCount }, (_, index) => {
@@ -126,12 +128,14 @@ export default function App() {
   const [previewLabel, setPreviewLabel] = useState<string>('waiting');
   const [status, setStatus] = useState<string>('initial');
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const nextLogId = useRef(1);
 
   const appendLog = useCallback((source: string, detail: string) => {
+    const id = nextLogId.current++;
     setLogs((current) =>
       [
         {
-          id: current.length + 1,
+          id,
           source,
           detail,
           at: new Date().toISOString(),
