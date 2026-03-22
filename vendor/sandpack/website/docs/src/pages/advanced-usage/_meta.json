@@ -1,0 +1,9 @@
+{
+  "index": "Overview",
+  "components": "Components",
+  "hooks": "Hooks",
+  "client": { "title": "Sandpack Client", "label": "JS" },
+  "static": { "title": "Static", "label": "JS" },
+  "bundlers": "Experimental bundler (beta)",
+  "serving-static-files": "Serving static files (beta)"
+}

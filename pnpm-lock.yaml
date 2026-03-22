@@ -15,14 +15,14 @@ importers:
   fixtures/color-kit-plane-api-repro:
     dependencies:
       '@codesandbox/sandpack-client':
-        specifier: link:../../sandpack/sandpack-client
-        version: link:../../sandpack/sandpack-client
+        specifier: link:../../vendor/sandpack/sandpack-client
+        version: link:../../vendor/sandpack/sandpack-client
       '@codesandbox/sandpack-react':
-        specifier: link:../../sandpack/sandpack-react
-        version: link:../../sandpack/sandpack-react
+        specifier: link:../../vendor/sandpack/sandpack-react
+        version: link:../../vendor/sandpack/sandpack-react
       '@codesandbox/sandpack-themes':
-        specifier: link:../../sandpack/sandpack-themes
-        version: link:../../sandpack/sandpack-themes
+        specifier: link:../../vendor/sandpack/sandpack-themes
+        version: link:../../vendor/sandpack/sandpack-themes
       react:
         specifier: ^18.2.0
         version: 18.3.1
@@ -49,8 +49,8 @@ importers:
   fixtures/minimal-startup-race-client:
     dependencies:
       '@codesandbox/sandpack-client':
-        specifier: link:../../sandpack/sandpack-client
-        version: link:../../sandpack/sandpack-client
+        specifier: link:../../vendor/sandpack/sandpack-client
+        version: link:../../vendor/sandpack/sandpack-client
       react:
         specifier: ^18.2.0
         version: 18.3.1
@@ -77,14 +77,14 @@ importers:
   fixtures/minimal-startup-race-react:
     dependencies:
       '@codesandbox/sandpack-client':
-        specifier: link:../../sandpack/sandpack-client
-        version: link:../../sandpack/sandpack-client
+        specifier: link:../../vendor/sandpack/sandpack-client
+        version: link:../../vendor/sandpack/sandpack-client
       '@codesandbox/sandpack-react':
-        specifier: link:../../sandpack/sandpack-react
-        version: link:../../sandpack/sandpack-react
+        specifier: link:../../vendor/sandpack/sandpack-react
+        version: link:../../vendor/sandpack/sandpack-react
       '@codesandbox/sandpack-themes':
-        specifier: link:../../sandpack/sandpack-themes
-        version: link:../../sandpack/sandpack-themes
+        specifier: link:../../vendor/sandpack/sandpack-themes
+        version: link:../../vendor/sandpack/sandpack-themes
       react:
         specifier: ^18.2.0
         version: 18.3.1
@@ -111,14 +111,14 @@ importers:
   fixtures/timeout-restart-repro:
     dependencies:
       '@codesandbox/sandpack-client':
-        specifier: link:../../sandpack/sandpack-client
-        version: link:../../sandpack/sandpack-client
+        specifier: link:../../vendor/sandpack/sandpack-client
+        version: link:../../vendor/sandpack/sandpack-client
       '@codesandbox/sandpack-react':
-        specifier: link:../../sandpack/sandpack-react
-        version: link:../../sandpack/sandpack-react
+        specifier: link:../../vendor/sandpack/sandpack-react
+        version: link:../../vendor/sandpack/sandpack-react
       '@codesandbox/sandpack-themes':
-        specifier: link:../../sandpack/sandpack-themes
-        version: link:../../sandpack/sandpack-themes
+        specifier: link:../../vendor/sandpack/sandpack-themes
+        version: link:../../vendor/sandpack/sandpack-themes
       react:
         specifier: ^18.2.0
         version: 18.3.1

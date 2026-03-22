@@ -27,26 +27,34 @@ The best next step is to create a separate `sandunpack` workspace, fork `codesan
 
 ## Recommended Project Shape
 
-Use `sandunpack` as a workspace, not just a single repo. The fork and the fixtures should live side by side.
+Current repo note:
+
+- the control-repo source of truth lives at `vendor/sandpack/`
+- an ignored sibling clone at `sandpack/` is optional scratch space for direct upstream operations
+- future agents should prefer the vendored path unless they are explicitly preparing an upstream branch outside this repo
+
+Use `sandunpack` as a single control repo. The Sandpack fork source, fixtures, and notes should all be operable from one remote.
 
 Suggested layout:
 
 ```text
 sandunpack/
   HANDOFF.md
-  sandpack/                  # your fork of codesandbox/sandpack
   fixtures/
     minimal-startup-race/
     timeout-restart-repro/
     color-kit-plane-api-repro/
   notes/
   scripts/
+  vendor/
+    sandpack/               # tracked Sandpack source of truth
 ```
 
 Why this shape:
 
-- `sandpack/` stays close to upstream and easy to PR from.
-- `fixtures/` can be messy, app-specific, and disposable without polluting the fork.
+- cloud agents only need write access to one repo.
+- `vendor/sandpack/` keeps Sandpack edits under the same control plane as the fixtures and notes.
+- `fixtures/` can be messy, app-specific, and disposable without needing a second writable remote.
 - `color-kit-plane-api-repro/` can stay focused on validation rather than discovery.
 
 ## What We Learned In `color-kit`
@@ -312,16 +320,15 @@ Known consumer-only area:
 Deliverables:
 
 - `sandunpack/` workspace created
-- fork of `codesandbox/sandpack` cloned into `sandunpack/sandpack`
-- upstream remote added
+- Sandpack source imported into `sandunpack/vendor/sandpack`
 - dependencies installed
 - upstream docs / tests runnable
 
 Checklist:
 
 1. Fork `codesandbox/sandpack`.
-2. Clone your fork into `sandunpack/sandpack`.
-3. Add `upstream` remote pointing at `codesandbox/sandpack`.
+2. Import the fork source into `sandunpack/vendor/sandpack`.
+3. Keep any direct upstream clone optional and outside the control flow.
 4. Verify the repo builds and tests before making any changes.
 5. Save this file as `HANDOFF.md` in the workspace root.
 
@@ -571,7 +578,7 @@ The right order is:
 Copy this into the new `sandunpack` workspace if helpful:
 
 ```text
-You are working in the `sandunpack` workspace. Your job is to investigate Sandpack root causes and validate targeted fixes in a fork of `codesandbox/sandpack`, while keeping `color-kit` as a validation fixture rather than the main debugging environment.
+You are working in the `sandunpack` control repo. Your job is to investigate Sandpack root causes and validate targeted fixes in the vendored `vendor/sandpack/` source tree, while keeping `color-kit` as a validation fixture rather than the main debugging environment.
 
 Start by reading `HANDOFF.md`.
 
@@ -591,7 +598,7 @@ Constraints:
 - keep notes in the workspace so future agents do not repeat discovery work
 
 Start with:
-1. set up `sandpack/` fork and verify baseline build
+1. set up `vendor/sandpack/` and verify baseline build
 2. read the Sandpack client docs and issues listed in `HANDOFF.md`
 3. create the minimal startup-race fixture in both `sandpack-react` and low-level `sandpack-client` forms
 4. instrument update queueing and timeout/restart flow before attempting code changes

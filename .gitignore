@@ -7,5 +7,5 @@ coverage/
 .vite/
 *.log
 
-# Nested Sandpack fork stays out of the root workspace repo.
+# Optional scratch clone for direct upstream operations stays out of the control repo.
 /sandpack/
