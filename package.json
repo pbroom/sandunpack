@@ -14,6 +14,11 @@
     "dev:timeout-restart": "pnpm --filter timeout-restart-repro dev",
     "dev:heavy-repro": "pnpm --filter color-kit-plane-api-repro dev"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
   "devDependencies": {
     "@types/node": "^25.5.0"
   }
