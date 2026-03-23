@@ -9,6 +9,7 @@
 	"scripts": {
 		"install:vendor": "bash ./scripts/vendor-yarn.sh install",
 		"build:vendor": "bash ./scripts/build-vendor.sh",
+		"check:fixture-links": "node ./scripts/check-fixture-links.mjs",
 		"build:fixtures": "pnpm -r --filter './fixtures/*' build",
 		"check:fixtures": "pnpm -r --filter './fixtures/*' check",
 		"start:all": "bash ./scripts/start-all.sh",

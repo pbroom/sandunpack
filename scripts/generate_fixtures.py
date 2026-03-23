@@ -1657,8 +1657,11 @@ def write_fixture_files(name: str, port: int, dependencies: dict[str, str]) -> N
         "version": "0.1.0",
         "type": "module",
         "scripts": {
+            "predev": "node ../../scripts/check-fixture-links.mjs --fixture .",
             "dev": f"vite --port {port}",
+            "prebuild": "node ../../scripts/check-fixture-links.mjs --fixture .",
             "build": "tsc --noEmit && vite build",
+            "precheck": "node ../../scripts/check-fixture-links.mjs --fixture .",
             "check": "tsc --noEmit",
         },
         "dependencies": dependencies,
