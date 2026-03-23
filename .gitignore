@@ -7,5 +7,10 @@ coverage/
 .vite/
 *.log
 
+# Guard against accidental Yarn Berry metadata in vendored Sandpack.
+/vendor/sandpack/.pnp.*
+/vendor/sandpack/.yarn/
+/vendor/sandpack/.yarnrc.yml
+
 # Optional scratch clone for direct upstream operations stays out of the control repo.
 /sandpack/
