@@ -1,6 +1,6 @@
 # Sandunpack Handoff
 
-This document is a handoff for a separate `sandunpack` workspace dedicated to Sandpack root-cause research, fork validation, and upstream PR work.
+This document is a handoff for the existing `sandunpack` workspace dedicated to Sandpack root-cause research, fork validation, and upstream PR work.
 
 The goal is to keep `color-kit` focused on shipping a stable Plane API playground while using it as a strong consumer fixture for Sandpack debugging.
 
@@ -23,7 +23,15 @@ The outcome was clear:
 
 That makes `color-kit` a very useful validation fixture, but a poor primary research environment. It combines several Sandpack stressors at once, which makes it hard to isolate root cause.
 
-The best next step is to create a separate `sandunpack` workspace, fork `codesandbox/sandpack`, build smaller reproductions, validate targeted fixes there, and then test those fixes back against a `color-kit`-derived fixture.
+The best next step is to keep using this `sandunpack` workspace to validate targeted fixes in `vendor/sandpack/`, prioritize smaller deterministic reproductions, and then test those fixes back against a `color-kit`-derived fixture.
+
+## Current Status
+
+- The workspace and planned repro fixtures already exist under `fixtures/`.
+- `minimal-startup-race-react` was fixed and merged as a fixture/harness bug, not as a proven Sandpack-core patch.
+- That merged harness fix stabilized `SandpackProvider` props, deduped debug-log rerenders, corrected the template update path from `'/src/App.tsx'` to `'/App.tsx'`, stabilized delayed update scheduling, and removed `React.StrictMode` from the React wrapper fixture.
+- No vendored `Sandpack` patch has been proven by that merged change yet.
+- The next highest-value investigations are `minimal-startup-race-client`, `timeout-restart-repro`, and verifying which Sandpack tree the fixtures are actually executing.
 
 ## Recommended Project Shape
 
@@ -32,6 +40,7 @@ Current repo note:
 - the control-repo source of truth lives at `vendor/sandpack/`
 - an ignored sibling clone at `sandpack/` is optional scratch space for direct upstream operations
 - future agents should prefer the vendored path unless they are explicitly preparing an upstream branch outside this repo
+- verify linked package realpaths before debugging or patching; stale installs can still point fixture `node_modules` at the sibling `sandpack/` tree instead of `vendor/sandpack/`
 
 Use `sandunpack` as a single control repo. The Sandpack fork source, fixtures, and notes should all be operable from one remote.
 
@@ -41,7 +50,8 @@ Suggested layout:
 sandunpack/
   HANDOFF.md
   fixtures/
-    minimal-startup-race/
+    minimal-startup-race-react/
+    minimal-startup-race-client/
     timeout-restart-repro/
     color-kit-plane-api-repro/
   notes/
@@ -57,6 +67,15 @@ Why this shape:
 - `fixtures/` can be messy, app-specific, and disposable without needing a second writable remote.
 - `color-kit-plane-api-repro/` can stay focused on validation rather than discovery.
 
+## Bootstrap / Environment Caveats
+
+- use Node 20.x in this workspace
+- install vendored dependencies via `pnpm install:vendor`
+- do not use bare `yarn` in `vendor/sandpack`; use the wrapper script and Yarn classic `1.22.19`
+- build `sandpack-client`, `sandpack-react`, and `sandpack-themes` before using the fixtures
+- use `pnpm check:fixtures` and `pnpm build:fixtures` for repo-wide validation; `pnpm turbo ...` is not applicable here
+- the fixture manifests point at `vendor/sandpack`, but installed links may still resolve to a sibling `sandpack/` clone from an older install, so verify package realpaths before assuming a vendored patch is active
+
 ## What We Learned In `color-kit`
 
 ### Current integration hotspots
@@ -71,12 +90,12 @@ The biggest stressor is that the docs playground injects the full raw `@color-ki
 
 ```ts
 const rawCoreSourceFiles = import.meta.glob(
-  '../../../../packages/core/src/**/*.{ts,tsx}',
-  {
-    eager: true,
-    import: 'default',
-    query: '?raw',
-  },
+	'../../../../packages/core/src/**/*.{ts,tsx}',
+	{
+		eager: true,
+		import: 'default',
+		query: '?raw',
+	},
 ) as Record<string, string>;
 ```
 
@@ -315,22 +334,23 @@ Known consumer-only area:
 
 ## Phase Plan
 
-## Phase 0: bootstrap the workspace
+## Phase 0: verify the existing workspace
 
 Deliverables:
 
-- `sandunpack/` workspace created
-- Sandpack source imported into `sandunpack/vendor/sandpack`
+- existing `sandunpack/` workspace verified
+- vendored Sandpack source verified under `sandunpack/vendor/sandpack`
 - dependencies installed
-- upstream docs / tests runnable
+- fixture/package realpaths verified
+- upstream docs / tests runnable where applicable
 
 Checklist:
 
-1. Fork `codesandbox/sandpack`.
-2. Import the fork source into `sandunpack/vendor/sandpack`.
+1. Verify `vendor/sandpack` is present and in the expected repo state.
+2. Confirm which realpath the linked fixture packages resolve to, and reinstall if `node_modules` still points at a sibling `sandpack/` clone.
 3. Keep any direct upstream clone optional and outside the control flow.
-4. Verify the repo builds and tests before making any changes.
-5. Save this file as `HANDOFF.md` in the workspace root.
+4. Verify the repo builds and fixture checks pass before making any changes.
+5. Keep this handoff file updated in the workspace root as findings land.
 
 Success criterion:
 
@@ -354,13 +374,20 @@ Record:
 
 The point is to avoid re-learning the same history after a few days.
 
-## Phase 2: build three fixtures
+## Phase 2: use and refine the three fixtures
 
 ### Fixture A: minimal startup race
 
 Purpose:
 
-- reproduce file-update races with the smallest possible setup
+- keep a small deterministic baseline for startup/update behavior
+- distinguish repro/harness bugs from real Sandpack runtime bugs
+
+Status:
+
+- both versions already exist: `minimal-startup-race-react` and `minimal-startup-race-client`
+- the React wrapper fixture was fixed and merged as a harness issue; treat it as a cleaned baseline, not proof of a Sandpack-core startup/update bug
+- the low-level client fixture is the better next place to prove or disprove a real initialization/update race
 
 Shape:
 
@@ -368,8 +395,9 @@ Shape:
 - one file initially blank or template-default
 - update to real code shortly after initialization
 - compare editor state vs preview state
+- keep `React.StrictMode` off unless double-mount behavior is the explicit thing under test
 
-Implement twice if possible:
+Maintain both forms:
 
 - `sandpack-react` wrapper fixture
 - low-level `sandpack-client` fixture
@@ -444,9 +472,9 @@ Do not mix several root-cause theories into one branch.
 Suggested branch sequence inside the fork:
 
 - `research/baseline-instrumentation`
-- `fix/update-queue-after-init`
 - `fix/timeout-hard-reset`
 - `fix/reconnect-after-timeout`
+- `fix/update-queue-after-init` only if the low-level startup-race fixture still proves a real dropped-update bug after the harness cleanup
 
 Patch ideas worth testing:
 
@@ -459,6 +487,11 @@ Intent:
 Why promising:
 
 - directly addresses `#1181`
+
+Caution:
+
+- the merged `minimal-startup-race-react` fix was a repro-level harness cleanup, so treat queue-after-init as a hypothesis that still needs proof, not as the current leading cause
+- do not start here unless the low-level `sandpack-client` fixture still reproduces a real dropped or ignored update after initialization
 
 ### Patch candidate B: hard reset preview/runtime after timeout
 
@@ -568,14 +601,14 @@ That reduces pressure and lets the fork work be judged honestly.
 The right order is:
 
 1. ship or preserve the custom runtime in `color-kit`
-2. build `sandunpack` as a separate workspace
+2. keep `sandunpack` as the research workspace and verify the linked Sandpack path before each patch run
 3. prove a narrow Sandpack fix there
 4. validate it with a `color-kit`-derived fixture
 5. only then decide whether a temporary maintained fork is worth using
 
 ## Suggested Prompt For The New Agent
 
-Copy this into the new `sandunpack` workspace if helpful:
+Copy this into the `sandunpack` workspace if helpful:
 
 ```text
 You are working in the `sandunpack` control repo. Your job is to investigate Sandpack root causes and validate targeted fixes in the vendored `vendor/sandpack/` source tree, while keeping `color-kit` as a validation fixture rather than the main debugging environment.
@@ -583,8 +616,8 @@ You are working in the `sandunpack` control repo. Your job is to investigate San
 Start by reading `HANDOFF.md`.
 
 Goals:
-- bootstrap the fork and fixture workspace
-- build three fixtures: minimal startup race, timeout/restart repro, and a compact color-kit-plane-api repro
+- work from the existing vendored fork and fixture workspace
+- use the existing minimal startup-race, timeout/restart, and compact color-kit-plane-api repros
 - instrument Sandpack before patching
 - test whether bugs live in `sandpack-react`, `sandpack-client`, timeout/restart logic, or preview/service-worker flow
 - create one patch branch per bug class
@@ -598,9 +631,9 @@ Constraints:
 - keep notes in the workspace so future agents do not repeat discovery work
 
 Start with:
-1. set up `vendor/sandpack/` and verify baseline build
+1. verify `vendor/sandpack/` and confirm which realpath the linked fixture packages currently resolve to
 2. read the Sandpack client docs and issues listed in `HANDOFF.md`
-3. create the minimal startup-race fixture in both `sandpack-react` and low-level `sandpack-client` forms
+3. extend the existing startup-race fixtures instead of rebuilding them from scratch
 4. instrument update queueing and timeout/restart flow before attempting code changes
 ```
 
