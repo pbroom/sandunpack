@@ -1,37 +1,37 @@
 // @ts-nocheck
-import type { SandpackMessage } from '@codesandbox/sandpack-client';
+import type {SandpackMessage} from '@codesandbox/sandpack-client';
 import {
-  SandpackCodeEditor,
-  SandpackLayout,
-  SandpackPreview,
-  SandpackProvider,
-  useSandpack,
+	SandpackCodeEditor,
+	SandpackLayout,
+	SandpackPreview,
+	SandpackProvider,
+	useSandpack,
 } from '@codesandbox/sandpack-react';
-import { sandpackDark } from '@codesandbox/sandpack-themes';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {sandpackDark} from '@codesandbox/sandpack-themes';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 
 const PREVIEW_SOURCE = 'minimal-startup-race-react-preview';
 const BLANK_LABEL = 'blank-template';
 const ACCENTS = ['#60a5fa', '#34d399', '#f59e0b', '#f472b6', '#a78bfa'];
 
 interface LogEntry {
-  id: number;
-  source: string;
-  detail: string;
-  at: string;
+	id: number;
+	source: string;
+	detail: string;
+	at: string;
 }
 
 interface RunControllerProps {
-  delayMs: number;
-  burstCount: number;
-  runNonce: number;
-  onExpectedLabel: (label: string) => void;
-  onStatus: (status: string) => void;
-  onLog: (source: string, detail: string) => void;
+	delayMs: number;
+	burstCount: number;
+	runNonce: number;
+	onExpectedLabel: (label: string) => void;
+	onStatus: (status: string) => void;
+	onLog: (source: string, detail: string) => void;
 }
 
 function buildPreviewAppCode(label: string, accent: string): string {
-  return `import { useEffect } from "react";
+	return `import { useEffect } from "react";
 
 export default function App() {
   useEffect(() => {
@@ -52,267 +52,309 @@ export default function App() {
 }
 
 const BLANK_APP_CODE = buildPreviewAppCode(BLANK_LABEL, '#94a3b8');
+// Keep provider props referentially stable while the fixture streams debug logs.
+const SANDBOX_FILES = {'/App.tsx': BLANK_APP_CODE};
+const SANDBOX_OPTIONS = {
+	autorun: true,
+	initMode: 'immediate',
+	recompileMode: 'immediate',
+	bundlerTimeOut: 10000,
+} as const;
+const SANDBOX_CUSTOM_SETUP = {
+	dependencies: {
+		react: '18.2.0',
+		'react-dom': '18.2.0',
+	},
+} as const;
 
 function summarizeMessage(message: SandpackMessage): string {
-  if (message.type === 'action') {
-    return `${message.type}:${message.action}`;
-  }
+	if (message.type === 'action') {
+		return `${message.type}:${message.action}`;
+	}
 
-  if (message.type === 'state') {
-    return `${message.type}:${message.state.entry}`;
-  }
+	if (message.type === 'state') {
+		return `${message.type}:${message.state.entry}`;
+	}
 
-  return message.type;
+	return message.type;
 }
 
 function RaceController({
-  delayMs,
-  burstCount,
-  runNonce,
-  onExpectedLabel,
-  onStatus,
-  onLog,
+	delayMs,
+	burstCount,
+	runNonce,
+	onExpectedLabel,
+	onStatus,
+	onLog,
 }: RunControllerProps) {
-  const { sandpack, listen } = useSandpack();
-  const lastScheduledNonce = useRef(0);
+	const {sandpack, listen} = useSandpack();
+	const lastScheduledNonce = useRef(0);
+	const updateFileRef = useRef(sandpack.updateFile);
 
-  useEffect(() => {
-    onStatus(sandpack.status);
-  }, [onStatus, sandpack.status]);
+	useEffect(() => {
+		updateFileRef.current = sandpack.updateFile;
+	}, [sandpack.updateFile]);
 
-  useEffect(() => {
-    return listen((message) => {
-      onLog('listen', summarizeMessage(message));
-    });
-  }, [listen, onLog]);
+	useEffect(() => {
+		onStatus(sandpack.status);
+	}, [onStatus, sandpack.status]);
 
-  useEffect(() => {
-    if (runNonce === 0 || lastScheduledNonce.current === runNonce) {
-      return;
-    }
+	useEffect(() => {
+		return listen((message) => {
+			onLog('listen', summarizeMessage(message));
+		});
+	}, [listen, onLog]);
 
-    lastScheduledNonce.current = runNonce;
-    onLog('sequence', `nonce=${runNonce} delay=${delayMs} burst=${burstCount}`);
-    const timer = window.setTimeout(() => {
-      const labels = Array.from({ length: burstCount }, (_, index) => {
-        if (burstCount === 1) {
-          return `real-update-${runNonce}`;
-        }
+	useEffect(() => {
+		if (runNonce === 0 || lastScheduledNonce.current === runNonce) {
+			return;
+		}
 
-        return `burst-${runNonce}-${index + 1}`;
-      });
+		lastScheduledNonce.current = runNonce;
+		onLog('sequence', `nonce=${runNonce} delay=${delayMs} burst=${burstCount}`);
+		const timer = window.setTimeout(() => {
+			const labels = Array.from({length: burstCount}, (_, index) => {
+				if (burstCount === 1) {
+					return `real-update-${runNonce}`;
+				}
 
-      labels.forEach((label, index) => {
-        window.setTimeout(() => {
-          onExpectedLabel(label);
-          onLog('updateFile', label);
-          sandpack.updateFile('/src/App.tsx', buildPreviewAppCode(label, ACCENTS[index % ACCENTS.length]));
-        }, index * 5);
-      });
-    }, delayMs);
+				return `burst-${runNonce}-${index + 1}`;
+			});
 
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [burstCount, delayMs, onExpectedLabel, onLog, runNonce, sandpack]);
+			labels.forEach((label, index) => {
+				window.setTimeout(() => {
+					onExpectedLabel(label);
+					onLog('updateFile', label);
+					updateFileRef.current(
+						'/App.tsx',
+						buildPreviewAppCode(label, ACCENTS[index % ACCENTS.length]),
+					);
+				}, index * 5);
+			});
+		}, delayMs);
 
-  return null;
+		return () => {
+			window.clearTimeout(timer);
+		};
+	}, [burstCount, delayMs, onExpectedLabel, onLog, runNonce]);
+
+	return null;
 }
 
 export default function App() {
-  const [delayMs, setDelayMs] = useState(0);
-  const [burstCount, setBurstCount] = useState(1);
-  const [runNonce, setRunNonce] = useState(1);
-  const [refreshNonce, setRefreshNonce] = useState(0);
-  const [expectedLabel, setExpectedLabel] = useState<string>(BLANK_LABEL);
-  const [previewLabel, setPreviewLabel] = useState<string>('waiting');
-  const [status, setStatus] = useState<string>('initial');
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const nextLogId = useRef(1);
+	const [delayMs, setDelayMs] = useState(0);
+	const [burstCount, setBurstCount] = useState(1);
+	const [runNonce, setRunNonce] = useState(1);
+	const [refreshNonce, setRefreshNonce] = useState(0);
+	const [expectedLabel, setExpectedLabel] = useState<string>(BLANK_LABEL);
+	const [previewLabel, setPreviewLabel] = useState<string>('waiting');
+	const [status, setStatus] = useState<string>('initial');
+	const [logs, setLogs] = useState<LogEntry[]>([]);
+	const nextLogId = useRef(1);
+	const lastDebugMessage = useRef<string | null>(null);
 
-  const appendLog = useCallback((source: string, detail: string) => {
-    const id = nextLogId.current++;
-    setLogs((current) =>
-      [
-        {
-          id,
-          source,
-          detail,
-          at: new Date().toISOString(),
-        },
-        ...current,
-      ].slice(0, 60),
-    );
-  }, []);
+	const appendLog = useCallback((source: string, detail: string) => {
+		const id = nextLogId.current++;
+		setLogs((current) =>
+			[
+				{
+					id,
+					source,
+					detail,
+					at: new Date().toISOString(),
+				},
+				...current,
+			].slice(0, 60),
+		);
+	}, []);
 
-  useEffect(() => {
-    window.__SANDPACK_DEBUG__ = true;
+	useEffect(() => {
+		window.__SANDPACK_DEBUG__ = true;
 
-    const handleDebug = (event: Event) => {
-      const detail = (event as CustomEvent<{
-        event: string;
-        payload: Record<string, unknown>;
-      }>).detail;
+		const handleDebug = (event: Event) => {
+			const detail = (
+				event as CustomEvent<{
+					event: string;
+					payload: Record<string, unknown>;
+				}>
+			).detail;
 
-      appendLog('debug', `${detail.event} ${JSON.stringify(detail.payload)}`);
-    };
+			const message = `${detail.event} ${JSON.stringify(detail.payload)}`;
+			if (message === lastDebugMessage.current) {
+				return;
+			}
 
-    window.addEventListener('sandpack-debug', handleDebug as EventListener);
-    return () => {
-      window.removeEventListener('sandpack-debug', handleDebug as EventListener);
-    };
-  }, [appendLog]);
+			lastDebugMessage.current = message;
+			appendLog('debug', message);
+		};
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const payload = event.data as { source?: string; label?: string };
-      if (payload?.source !== PREVIEW_SOURCE || !payload.label) {
-        return;
-      }
+		window.addEventListener('sandpack-debug', handleDebug as EventListener);
+		return () => {
+			window.removeEventListener(
+				'sandpack-debug',
+				handleDebug as EventListener,
+			);
+		};
+	}, [appendLog]);
 
-      setPreviewLabel(payload.label);
-      appendLog('preview', payload.label);
-    };
+	useEffect(() => {
+		const handleMessage = (event: MessageEvent) => {
+			const payload = event.data as {source?: string; label?: string};
+			if (payload?.source !== PREVIEW_SOURCE || !payload.label) {
+				return;
+			}
 
-    window.addEventListener('message', handleMessage);
-    return () => {
-      window.removeEventListener('message', handleMessage);
-    };
-  }, [appendLog]);
+			setPreviewLabel(payload.label);
+			appendLog('preview', payload.label);
+		};
 
-  const statusClassName = useMemo(() => {
-    if (previewLabel === expectedLabel) {
-      return 'status-pill good';
-    }
+		window.addEventListener('message', handleMessage);
+		return () => {
+			window.removeEventListener('message', handleMessage);
+		};
+	}, [appendLog]);
 
-    return 'status-pill bad';
-  }, [expectedLabel, previewLabel]);
+	const statusClassName = useMemo(() => {
+		if (previewLabel === expectedLabel) {
+			return 'status-pill good';
+		}
 
-  return (
-    <div className="app-shell">
-      <div className="page">
-        <div className="header">
-          <div>
-            <h1>Minimal Startup Race: sandpack-react</h1>
-            <p>Starts from a blank `react-ts` template file and pushes the real file update shortly after mount.</p>
-          </div>
-          <span className={statusClassName}>expected {expectedLabel} | preview {previewLabel}</span>
-        </div>
+		return 'status-pill bad';
+	}, [expectedLabel, previewLabel]);
 
-        <section className="controls">
-          <div className="controls-grid">
-            <label className="control-group">
-              <span>Delay before update (ms)</span>
-              <input
-                type="number"
-                min="0"
-                value={delayMs}
-                onChange={(event) => setDelayMs(Number(event.target.value))}
-              />
-            </label>
-            <label className="control-group">
-              <span>Burst count</span>
-              <input
-                type="number"
-                min="1"
-                max="5"
-                value={burstCount}
-                onChange={(event) => setBurstCount(Number(event.target.value))}
-              />
-            </label>
-          </div>
-          <div className="actions">
-            <button type="button" onClick={() => setRunNonce((value) => value + 1)}>
-              Run race update
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setPreviewLabel('waiting');
-                setExpectedLabel(BLANK_LABEL);
-                setRefreshNonce((value) => value + 1);
-                setRunNonce((value) => value + 1);
-                appendLog('host', 'remount sandbox');
-              }}
-            >
-              Remount sandbox
-            </button>
-            <button type="button" onClick={() => setLogs([])}>
-              Clear logs
-            </button>
-          </div>
-        </section>
+	return (
+		<div className='app-shell'>
+			<div className='page'>
+				<div className='header'>
+					<div>
+						<h1>Minimal Startup Race: sandpack-react</h1>
+						<p>
+							Starts from a blank `react-ts` template file and pushes the real
+							file update shortly after mount.
+						</p>
+					</div>
+					<span className={statusClassName}>
+						expected {expectedLabel} | preview {previewLabel}
+					</span>
+				</div>
 
-        <section className="metrics">
-          <div className="metric-row">
-            <span>Sandpack status</span>
-            <code>{status}</code>
-          </div>
-          <div className="metric-row">
-            <span>Expected label</span>
-            <code>{expectedLabel}</code>
-          </div>
-          <div className="metric-row">
-            <span>Preview label</span>
-            <code>{previewLabel}</code>
-          </div>
-          <div className="metric-row">
-            <span>Preview matches</span>
-            <code>{String(previewLabel === expectedLabel)}</code>
-          </div>
-        </section>
+				<section className='controls'>
+					<div className='controls-grid'>
+						<label className='control-group'>
+							<span>Delay before update (ms)</span>
+							<input
+								type='number'
+								min='0'
+								value={delayMs}
+								onChange={(event) => setDelayMs(Number(event.target.value))}
+							/>
+						</label>
+						<label className='control-group'>
+							<span>Burst count</span>
+							<input
+								type='number'
+								min='1'
+								max='5'
+								value={burstCount}
+								onChange={(event) => setBurstCount(Number(event.target.value))}
+							/>
+						</label>
+					</div>
+					<div className='actions'>
+						<button
+							type='button'
+							onClick={() => setRunNonce((value) => value + 1)}
+						>
+							Run race update
+						</button>
+						<button
+							type='button'
+							onClick={() => {
+								lastDebugMessage.current = null;
+								setPreviewLabel('waiting');
+								setExpectedLabel(BLANK_LABEL);
+								setRefreshNonce((value) => value + 1);
+								setRunNonce((value) => value + 1);
+								appendLog('host', 'remount sandbox');
+							}}
+						>
+							Remount sandbox
+						</button>
+						<button
+							type='button'
+							onClick={() => {
+								lastDebugMessage.current = null;
+								setLogs([]);
+							}}
+						>
+							Clear logs
+						</button>
+					</div>
+				</section>
 
-        <div className="layout">
-          <section className="editor-panel">
-            <SandpackProvider
-              key={refreshNonce}
-              template="react-ts"
-              theme={sandpackDark}
-              files={{ '/src/App.tsx': BLANK_APP_CODE }}
-              options={{
-                autorun: true,
-                initMode: 'immediate',
-                recompileMode: 'immediate',
-                bundlerTimeOut: 10000,
-              }}
-              customSetup={{
-                dependencies: {
-                  react: '18.2.0',
-                  'react-dom': '18.2.0',
-                },
-              }}
-            >
-              <RaceController
-                delayMs={delayMs}
-                burstCount={burstCount}
-                runNonce={runNonce}
-                onExpectedLabel={setExpectedLabel}
-                onStatus={setStatus}
-                onLog={appendLog}
-              />
-              <SandpackLayout>
-                <SandpackCodeEditor showTabs={false} />
-                <SandpackPreview showNavigator={false} showOpenInCodeSandbox={false} />
-              </SandpackLayout>
-            </SandpackProvider>
-          </section>
+				<section className='metrics'>
+					<div className='metric-row'>
+						<span>Sandpack status</span>
+						<code>{status}</code>
+					</div>
+					<div className='metric-row'>
+						<span>Expected label</span>
+						<code>{expectedLabel}</code>
+					</div>
+					<div className='metric-row'>
+						<span>Preview label</span>
+						<code>{previewLabel}</code>
+					</div>
+					<div className='metric-row'>
+						<span>Preview matches</span>
+						<code>{String(previewLabel === expectedLabel)}</code>
+					</div>
+				</section>
 
-          <section className="logs">
-            <h2>Event log</h2>
-            <ul className="log-list">
-              {logs.map((entry) => (
-                <li className="log-item" key={entry.id}>
-                  <header>
-                    <strong>{entry.source}</strong>
-                    <span>{entry.at}</span>
-                  </header>
-                  <code>{entry.detail}</code>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
-      </div>
-    </div>
-  );
+				<div className='layout'>
+					<section className='editor-panel'>
+						<SandpackProvider
+							key={refreshNonce}
+							template='react-ts'
+							theme={sandpackDark}
+							files={SANDBOX_FILES}
+							options={SANDBOX_OPTIONS}
+							customSetup={SANDBOX_CUSTOM_SETUP}
+						>
+							<RaceController
+								delayMs={delayMs}
+								burstCount={burstCount}
+								runNonce={runNonce}
+								onExpectedLabel={setExpectedLabel}
+								onStatus={setStatus}
+								onLog={appendLog}
+							/>
+							<SandpackLayout>
+								<SandpackCodeEditor showTabs={false} />
+								<SandpackPreview
+									showNavigator={false}
+									showOpenInCodeSandbox={false}
+								/>
+							</SandpackLayout>
+						</SandpackProvider>
+					</section>
+
+					<section className='logs'>
+						<h2>Event log</h2>
+						<ul className='log-list'>
+							{logs.map((entry) => (
+								<li className='log-item' key={entry.id}>
+									<header>
+										<strong>{entry.source}</strong>
+										<span>{entry.at}</span>
+									</header>
+									<code>{entry.detail}</code>
+								</li>
+							))}
+						</ul>
+					</section>
+				</div>
+			</div>
+		</div>
+	);
 }
