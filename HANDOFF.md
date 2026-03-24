@@ -31,7 +31,8 @@ The best next step is to keep using this `sandunpack` workspace to validate targ
 - `minimal-startup-race-react` was fixed and merged as a fixture/harness bug, not as a proven Sandpack-core patch.
 - That merged harness fix stabilized `SandpackProvider` props, deduped debug-log rerenders, corrected the template update path from `'/src/App.tsx'` to `'/App.tsx'`, stabilized delayed update scheduling, and removed `React.StrictMode` from the React wrapper fixture.
 - No vendored `Sandpack` patch has been proven by that merged change yet.
-- The next highest-value investigations are `minimal-startup-race-client`, `timeout-restart-repro`, and verifying which Sandpack tree the fixtures are actually executing.
+- The current workspace install resolves fixture links into `vendor/sandpack`, and `pnpm check:fixture-links` now enforces that expectation before fixture `dev`, `build`, `check`, and `start:all`.
+- The next highest-value investigations are `minimal-startup-race-client` and `timeout-restart-repro`, now that fixture/source-tree drift fails loudly instead of silently reusing an old sibling checkout.
 
 ## Recommended Project Shape
 
@@ -74,7 +75,8 @@ Why this shape:
 - do not use bare `yarn` in `vendor/sandpack`; use the wrapper script and Yarn classic `1.22.19`
 - build `sandpack-client`, `sandpack-react`, and `sandpack-themes` before using the fixtures
 - use `pnpm check:fixtures` and `pnpm build:fixtures` for repo-wide validation; `pnpm turbo ...` is not applicable here
-- the fixture manifests point at `vendor/sandpack`, but installed links may still resolve to a sibling `sandpack/` clone from an older install, so verify package realpaths before assuming a vendored patch is active
+- run `pnpm check:fixture-links` after installs or dependency churn; it compares fixture manifest targets, installed symlink targets, and canonical realpaths, and fails if anything resolves outside `vendor/sandpack`
+- fixture `dev`, `build`, and `check` scripts now run that link verifier automatically, and `pnpm start:all` does the same before building or launching fixtures
 
 ## What We Learned In `color-kit`
 
@@ -347,7 +349,7 @@ Deliverables:
 Checklist:
 
 1. Verify `vendor/sandpack` is present and in the expected repo state.
-2. Confirm which realpath the linked fixture packages resolve to, and reinstall if `node_modules` still points at a sibling `sandpack/` clone.
+2. Run `pnpm check:fixture-links`; reinstall if it reports stale fixture links or any resolution outside `vendor/sandpack`.
 3. Keep any direct upstream clone optional and outside the control flow.
 4. Verify the repo builds and fixture checks pass before making any changes.
 5. Keep this handoff file updated in the workspace root as findings land.
@@ -631,7 +633,7 @@ Constraints:
 - keep notes in the workspace so future agents do not repeat discovery work
 
 Start with:
-1. verify `vendor/sandpack/` and confirm which realpath the linked fixture packages currently resolve to
+1. verify `vendor/sandpack/` and run `pnpm check:fixture-links` before assuming a vendored patch is active
 2. read the Sandpack client docs and issues listed in `HANDOFF.md`
 3. extend the existing startup-race fixtures instead of rebuilding them from scratch
 4. instrument update queueing and timeout/restart flow before attempting code changes
