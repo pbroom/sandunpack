@@ -39,6 +39,8 @@ if [ ! -d node_modules ]; then
   pnpm install
 fi
 
+pnpm check:fixture-links
+
 if [ -f "$PID_FILE" ]; then
   while IFS=$'\t' read -r _ pid _ _; do
     if [ -n "${pid:-}" ] && kill -0 "$pid" 2>/dev/null; then
