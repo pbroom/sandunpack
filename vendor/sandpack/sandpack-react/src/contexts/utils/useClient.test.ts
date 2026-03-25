@@ -2,12 +2,38 @@
  * @jest-environment jsdom
  */
 
+import * as sandpackClient from "@codesandbox/sandpack-client";
 import { renderHook, act } from "@testing-library/react";
 
 import { getSandpackStateFromProps } from "../../utils/sandpackUtils";
 
 import { useClient } from "./useClient";
 import type { UseClientOperations } from "./useClient";
+
+const actualSandpackClient = jest.requireActual("@codesandbox/sandpack-client");
+
+jest.mock("@codesandbox/sandpack-client", () => {
+  const actual = jest.requireActual("@codesandbox/sandpack-client");
+
+  return {
+    ...actual,
+    loadSandpackClient: jest.fn((...args) =>
+      actual.loadSandpackClient(...args)
+    ),
+  };
+});
+
+const mockedLoadSandpackClient =
+  sandpackClient.loadSandpackClient as jest.MockedFunction<
+    typeof sandpackClient.loadSandpackClient
+  >;
+
+beforeEach(() => {
+  mockedLoadSandpackClient.mockReset();
+  mockedLoadSandpackClient.mockImplementation((...args) =>
+    actualSandpackClient.loadSandpackClient(...args)
+  );
+});
 
 const getAmountOfListener = (
   instance: UseClientOperations,
@@ -392,6 +418,52 @@ describe(useClient, () => {
       expect(Object.keys(operations.clients)).toHaveLength(1);
       expect(operations.clients["client-1"]).toBe(undefined);
       expect(operations.clients["client-2"]).toBeDefined();
+    });
+
+    it("does not initialize the same client twice while a run is already in flight", async () => {
+      const { result } = renderHook(() =>
+        useClient({}, getSandpackStateFromProps({}))
+      );
+      const operations = result.current[1];
+
+      let releaseFirstLoad!: () => void;
+      const firstLoadBlocked = new Promise<void>((resolve) => {
+        releaseFirstLoad = resolve;
+      });
+      mockedLoadSandpackClient.mockImplementation(async (...args) => {
+        if (mockedLoadSandpackClient.mock.calls.length === 1) {
+          await firstLoadBlocked;
+        }
+
+        return actualSandpackClient.loadSandpackClient(...args);
+      });
+
+      await act(async () => {
+        await operations.registerBundler(
+          document.createElement("iframe"),
+          "client-1"
+        );
+      });
+
+      let firstRun!: Promise<void>;
+      let secondRun!: Promise<void>;
+      await act(async () => {
+        firstRun = operations.runSandpack();
+        secondRun = operations.runSandpack();
+
+        await Promise.resolve();
+      });
+
+      expect(mockedLoadSandpackClient).toHaveBeenCalledTimes(1);
+
+      releaseFirstLoad();
+
+      await act(async () => {
+        await Promise.all([firstRun, secondRun]);
+      });
+
+      expect(mockedLoadSandpackClient).toHaveBeenCalledTimes(1);
+      expect(Object.keys(operations.clients)).toEqual(["client-1"]);
     });
   });
 

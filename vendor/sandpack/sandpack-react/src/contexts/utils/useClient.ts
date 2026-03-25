@@ -144,6 +144,7 @@ export const useClient: UseClient = (
   const debounceHook = useRef<number | undefined>();
   const prevEnvironment = useRef(filesState.environment);
   const lastUpdateDebugSignature = useRef<string | null>(null);
+  const runSandpackPromise = useRef<Promise<void> | null>(null);
 
   const asyncSandpackId = useAsyncSandpackId(filesState.files);
   const sandboxSummary = useMemo(
@@ -403,22 +404,41 @@ export const useClient: UseClient = (
   }, [destroyBundler]);
 
   const runSandpack = useCallback(async (): Promise<void> => {
-    emitDebugEvent("react:run:start", {
-      registeredClientIds: Object.keys(registeredIframes.current),
-      ...sandboxSummary,
-    });
-    await Promise.all(
-      Object.entries(registeredIframes.current).map(
-        async ([clientId, { iframe, clientPropsOverride = {} }]) => {
-          await createClient(iframe, clientId, clientPropsOverride);
-        }
-      )
-    );
+    if (runSandpackPromise.current) {
+      emitDebugEvent("react:run:reuse-inflight", {
+        registeredClientIds: Object.keys(registeredIframes.current),
+      });
+      return runSandpackPromise.current;
+    }
 
-    setState((prev) => ({ ...prev, error: null, status: "running" }));
-    emitDebugEvent("react:run:complete", {
-      activeClients: Object.keys(clients.current).length,
-    });
+    const nextRun = (async () => {
+      emitDebugEvent("react:run:start", {
+        registeredClientIds: Object.keys(registeredIframes.current),
+        ...sandboxSummary,
+      });
+      await Promise.all(
+        Object.entries(registeredIframes.current).map(
+          async ([clientId, { iframe, clientPropsOverride = {} }]) => {
+            await createClient(iframe, clientId, clientPropsOverride);
+          }
+        )
+      );
+
+      setState((prev) => ({ ...prev, error: null, status: "running" }));
+      emitDebugEvent("react:run:complete", {
+        activeClients: Object.keys(clients.current).length,
+      });
+    })();
+
+    runSandpackPromise.current = nextRun;
+
+    try {
+      await nextRun;
+    } finally {
+      if (runSandpackPromise.current === nextRun) {
+        runSandpackPromise.current = null;
+      }
+    }
   }, [createClient, sandboxSummary]);
 
   intersectionObserverCallback.current = (

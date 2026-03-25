@@ -9,12 +9,12 @@
 5. Confirmed timeout recovery semantics in the small repro. After timeout, `refresh` and `shell/restart` dispatches are skipped while the provider is not running, but `runSandpack()` and a full remount do create new client attempts. If the timeout budget is raised, both recover successfully.
 6. Read the vendored UI paths too. This matches Sandpack's built-in behavior: the timeout `LoadingOverlay` uses `runSandpack()` for `Try again`, and the normal Preview refresh button is only shown while status is `running`.
 7. Added a `useClient` regression test and fix for unmounted preview registrations. A live client unmount no longer leaves a stale registration behind that gets recreated on the next `runSandpack()`.
-8. Re-checked the StrictMode repros after that fix. Duplicate startup still reproduces in the `sandpack-react` fixtures, but it now looks like the same client ID is initialized twice rather than an old unmounted client being revived.
+8. Added an in-flight `runSandpack()` guard in `sandpack-react` and a regression test for overlapping runs on the same registered client.
+9. Re-checked the StrictMode repros after that fix. The `sandpack-react` fixtures no longer show duplicate client initialization on initial startup in the browser spot-check.
 
 ## Next
 
-1. Keep `fixtures/timeout-restart-repro` as the main timeout control, but narrow the question further: no client-recreation failure is proven yet in the small repro if `runSandpack()` gets a realistic timeout budget.
-2. Target duplicate `initializeSandpackIframe` / `runSandpack` re-entry for the same registered client under StrictMode effect replay in `sandpack-react`.
-3. Keep focusing on preview reset, reconnect behavior, and preview URL lifecycle in cases that still fail even after explicit rerun or remount. The current timeout fixture does not enable Sandpack's experimental service-worker mode, so service-worker state is probably not part of this small repro.
-4. Keep `fixtures/minimal-startup-race-client` as the control fixture unless new baseline evidence shows a real dropped-update race.
-5. Only validate on `fixtures/color-kit-plane-api-repro` after a vendored fix survives the smaller repros.
+1. Keep `fixtures/timeout-restart-repro` as the main timeout control, but with the StrictMode replay issue narrowed down: no client-recreation failure is proven yet in the small repro if `runSandpack()` gets a realistic timeout budget.
+2. Focus on timeout-specific behavior now: preview reset, reconnect behavior, and preview URL lifecycle in cases that still fail even after explicit rerun or remount. The current timeout fixture does not enable Sandpack's experimental service-worker mode, so service-worker state is probably not part of this small repro.
+3. Keep `fixtures/minimal-startup-race-client` as the control fixture unless new baseline evidence shows a real dropped-update race.
+4. Only validate on `fixtures/color-kit-plane-api-repro` after a vendored fix survives the smaller repros.
