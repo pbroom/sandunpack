@@ -358,6 +358,41 @@ describe(useClient, () => {
       expect(getAmountOfListener(operations, "client-1")).toBe(3);
       expect(operations.clients["client-2"]).toBe(undefined);
     });
+
+    it("does not recreate an unmounted client when a new bundler mounts", async () => {
+      const { result } = renderHook(() =>
+        useClient({}, getSandpackStateFromProps({}))
+      );
+      const operations = result.current[1];
+
+      await act(async () => {
+        await operations.registerBundler(
+          document.createElement("iframe"),
+          "client-1"
+        );
+        await operations.runSandpack();
+      });
+
+      expect(operations.clients["client-1"]).toBeDefined();
+
+      act(() => {
+        operations.unregisterBundler("client-1");
+      });
+
+      expect(operations.clients["client-1"]).toBe(undefined);
+
+      await act(async () => {
+        await operations.registerBundler(
+          document.createElement("iframe"),
+          "client-2"
+        );
+        await operations.runSandpack();
+      });
+
+      expect(Object.keys(operations.clients)).toHaveLength(1);
+      expect(operations.clients["client-1"]).toBe(undefined);
+      expect(operations.clients["client-2"]).toBeDefined();
+    });
   });
 
   describe("status", () => {

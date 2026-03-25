@@ -1,51 +1,76 @@
 // @ts-nocheck
-import type { SandpackMessage } from '@codesandbox/sandpack-client';
+import type {SandpackMessage} from '@codesandbox/sandpack-client';
 import {
-  SandpackCodeEditor,
-  SandpackLayout,
-  SandpackPreview,
-  SandpackProvider,
-  useSandpack,
-  useSandpackNavigation,
-  useSandpackShell,
+	SandpackCodeEditor,
+	SandpackLayout,
+	SandpackPreview,
+	SandpackProvider,
+	useSandpack,
+	useSandpackNavigation,
+	useSandpackShell,
 } from '@codesandbox/sandpack-react';
-import { sandpackDark } from '@codesandbox/sandpack-themes';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {sandpackDark} from '@codesandbox/sandpack-themes';
+import {useCallback, useEffect, useMemo, useState} from 'react';
 
 const PREVIEW_SOURCE = 'timeout-restart-preview';
 const VALID_LABEL = 'timeout-valid';
+const STRICT_MODE_ENABLED = import.meta.env.VITE_STRICT_MODE === 'true';
 const HEAVY_DEPENDENCIES = {
-  '@emotion/react': 'latest',
-  '@emotion/styled': 'latest',
-  '@mui/material': 'latest',
-  'date-fns': 'latest',
-  'framer-motion': 'latest',
+	'@emotion/react': 'latest',
+	'@emotion/styled': 'latest',
+	'@mui/material': 'latest',
+	'date-fns': 'latest',
+	'framer-motion': 'latest',
 };
 
 interface LogEntry {
-  id: number;
-  source: string;
-  detail: string;
-  at: string;
+	id: number;
+	source: string;
+	detail: string;
+	at: string;
 }
 
 interface TimeoutControllerProps {
-  syntaxError: boolean;
-  timeoutMs: number;
-  onStatus: (status: string) => void;
-  onError: (message: string) => void;
-  onLog: (source: string, detail: string) => void;
+	syntaxError: boolean;
+	timeoutMs: number;
+	onStatus: (status: string) => void;
+	onError: (message: string) => void;
+	onLog: (source: string, detail: string) => void;
 }
 
 function buildHeavyModule(): string {
-  const numbers = Array.from({ length: 2000 }, (_, index) => String(index % 97)).join(', ');
-  return `export const heavyValues = [${numbers}];
+	const numbers = Array.from({length: 2000}, (_, index) =>
+		String(index % 97),
+	).join(', ');
+	return `export const heavyValues = [${numbers}];
 export const heavyTotal = heavyValues.reduce((sum, value) => sum + value, 0);
 `;
 }
 
+function buildSandboxEntryCode(): string {
+	const reactImport = STRICT_MODE_ENABLED
+		? 'import React, { StrictMode } from "react";\n'
+		: 'import React from "react";\n';
+	const renderApp = STRICT_MODE_ENABLED
+		? `root.render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+);`
+		: 'root.render(<App />);';
+
+	return `${reactImport}import { createRoot } from "react-dom/client";
+import "./styles.css";
+
+import App from "./src/App";
+
+const root = createRoot(document.getElementById("root")!);
+${renderApp}
+`;
+}
+
 function buildValidCode(): string {
-  return `import Button from "@mui/material/Button";
+	return `import Button from "@mui/material/Button";
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
 import { heavyTotal } from "./heavy-data";
@@ -79,7 +104,7 @@ export default function App() {
 }
 
 function buildBrokenCode(): string {
-  return `import Button from "@mui/material/Button";
+	return `import Button from "@mui/material/Button";
 
 export default function App() {
   return (
@@ -93,271 +118,294 @@ export default function App() {
 }
 
 const VALID_FILES = {
-  '/src/App.tsx': buildValidCode(),
-  '/src/heavy-data.ts': buildHeavyModule(),
+	'/index.tsx': {
+		code: buildSandboxEntryCode(),
+		hidden: true,
+	},
+	'/src/App.tsx': buildValidCode(),
+	'/src/heavy-data.ts': buildHeavyModule(),
 };
 
 function summarizeMessage(message: SandpackMessage): string {
-  if (message.type === 'action') {
-    return `${message.type}:${message.action}`;
-  }
+	if (message.type === 'action') {
+		return `${message.type}:${message.action}`;
+	}
 
-  if (message.type === 'state') {
-    return `${message.type}:${message.state.entry}`;
-  }
+	if (message.type === 'state') {
+		return `${message.type}:${message.state.entry}`;
+	}
 
-  return message.type;
+	return message.type;
 }
 
-function TimeoutController({ syntaxError, timeoutMs, onStatus, onError, onLog }: TimeoutControllerProps) {
-  const { sandpack, listen } = useSandpack();
-  const { refresh } = useSandpackNavigation();
-  const { restart } = useSandpackShell();
+function TimeoutController({
+	syntaxError,
+	timeoutMs,
+	onStatus,
+	onError,
+	onLog,
+}: TimeoutControllerProps) {
+	const {sandpack, listen} = useSandpack();
+	const {refresh} = useSandpackNavigation();
+	const {restart} = useSandpackShell();
 
-  useEffect(() => {
-    onStatus(sandpack.status);
-    onError(sandpack.error?.message ?? 'none');
-  }, [onError, onStatus, sandpack.error?.message, sandpack.status]);
+	useEffect(() => {
+		onStatus(sandpack.status);
+		onError(sandpack.error?.message ?? 'none');
+	}, [onError, onStatus, sandpack.error?.message, sandpack.status]);
 
-  useEffect(() => {
-    return listen((message) => {
-      onLog('listen', summarizeMessage(message));
-    });
-  }, [listen, onLog]);
+	useEffect(() => {
+		return listen((message) => {
+			onLog('listen', summarizeMessage(message));
+		});
+	}, [listen, onLog]);
 
-  return (
-    <section className="controls" style={{ marginBottom: 16 }}>
-      <div className="metric-row">
-        <span>Configured timeout</span>
-        <code>{timeoutMs} ms</code>
-      </div>
-      <div className="metric-row">
-        <span>Syntax error enabled</span>
-        <code>{String(syntaxError)}</code>
-      </div>
-      <div className="actions">
-        <button
-          type="button"
-          onClick={() => {
-            onLog('dispatch', 'refresh');
-            refresh();
-          }}
-        >
-          Dispatch refresh
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            onLog('dispatch', 'shell/restart');
-            restart();
-          }}
-        >
-          Dispatch shell/restart
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            onLog('host', 'runSandpack()');
-            void sandpack.runSandpack();
-          }}
-        >
-          Call runSandpack()
-        </button>
-      </div>
-    </section>
-  );
+	return (
+		<section className='controls' style={{marginBottom: 16}}>
+			<div className='metric-row'>
+				<span>Configured timeout</span>
+				<code>{timeoutMs} ms</code>
+			</div>
+			<div className='metric-row'>
+				<span>Syntax error enabled</span>
+				<code>{String(syntaxError)}</code>
+			</div>
+			<div className='actions'>
+				<button
+					type='button'
+					onClick={() => {
+						onLog('dispatch', 'refresh');
+						refresh();
+					}}
+				>
+					Dispatch refresh
+				</button>
+				<button
+					type='button'
+					onClick={() => {
+						onLog('dispatch', 'shell/restart');
+						restart();
+					}}
+				>
+					Dispatch shell/restart
+				</button>
+				<button
+					type='button'
+					onClick={() => {
+						onLog('host', 'runSandpack()');
+						void sandpack.runSandpack();
+					}}
+				>
+					Call runSandpack()
+				</button>
+			</div>
+		</section>
+	);
 }
 
 export default function App() {
-  const [timeoutMs, setTimeoutMs] = useState(4000);
-  const [syntaxError, setSyntaxError] = useState(false);
-  const [remountNonce, setRemountNonce] = useState(0);
-  const [previewLabel, setPreviewLabel] = useState('waiting');
-  const [status, setStatus] = useState('initial');
-  const [errorMessage, setErrorMessage] = useState('none');
-  const [logs, setLogs] = useState<LogEntry[]>([]);
+	const [timeoutMs, setTimeoutMs] = useState(4000);
+	const [syntaxError, setSyntaxError] = useState(false);
+	const [remountNonce, setRemountNonce] = useState(0);
+	const [previewLabel, setPreviewLabel] = useState('waiting');
+	const [status, setStatus] = useState('initial');
+	const [errorMessage, setErrorMessage] = useState('none');
+	const [logs, setLogs] = useState<LogEntry[]>([]);
 
-  const appendLog = useCallback((source: string, detail: string) => {
-    setLogs((current) =>
-      [
-        {
-          id: current.length + 1,
-          source,
-          detail,
-          at: new Date().toISOString(),
-        },
-        ...current,
-      ].slice(0, 80),
-    );
-  }, []);
+	const appendLog = useCallback((source: string, detail: string) => {
+		setLogs((current) =>
+			[
+				{
+					id: current.length + 1,
+					source,
+					detail,
+					at: new Date().toISOString(),
+				},
+				...current,
+			].slice(0, 80),
+		);
+	}, []);
 
-  useEffect(() => {
-    window.__SANDPACK_DEBUG__ = true;
+	useEffect(() => {
+		window.__SANDPACK_DEBUG__ = true;
 
-    const handleDebug = (event: Event) => {
-      const detail = (event as CustomEvent<{
-        event: string;
-        payload: Record<string, unknown>;
-      }>).detail;
+		const handleDebug = (event: Event) => {
+			const detail = (
+				event as CustomEvent<{
+					event: string;
+					payload: Record<string, unknown>;
+				}>
+			).detail;
 
-      appendLog('debug', `${detail.event} ${JSON.stringify(detail.payload)}`);
-    };
+			appendLog('debug', `${detail.event} ${JSON.stringify(detail.payload)}`);
+		};
 
-    window.addEventListener('sandpack-debug', handleDebug as EventListener);
-    return () => {
-      window.removeEventListener('sandpack-debug', handleDebug as EventListener);
-    };
-  }, [appendLog]);
+		window.addEventListener('sandpack-debug', handleDebug as EventListener);
+		return () => {
+			window.removeEventListener(
+				'sandpack-debug',
+				handleDebug as EventListener,
+			);
+		};
+	}, [appendLog]);
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const payload = event.data as { source?: string; label?: string };
-      if (payload?.source !== PREVIEW_SOURCE || !payload.label) {
-        return;
-      }
+	useEffect(() => {
+		const handleMessage = (event: MessageEvent) => {
+			const payload = event.data as {source?: string; label?: string};
+			if (payload?.source !== PREVIEW_SOURCE || !payload.label) {
+				return;
+			}
 
-      setPreviewLabel(payload.label);
-      appendLog('preview', payload.label);
-    };
+			setPreviewLabel(payload.label);
+			appendLog('preview', payload.label);
+		};
 
-    window.addEventListener('message', handleMessage);
-    return () => {
-      window.removeEventListener('message', handleMessage);
-    };
-  }, [appendLog]);
+		window.addEventListener('message', handleMessage);
+		return () => {
+			window.removeEventListener('message', handleMessage);
+		};
+	}, [appendLog]);
 
-  const files = useMemo(() => {
-    if (syntaxError) {
-      return {
-        ...VALID_FILES,
-        '/src/App.tsx': buildBrokenCode(),
-      };
-    }
+	const files = useMemo(() => {
+		if (syntaxError) {
+			return {
+				...VALID_FILES,
+				'/src/App.tsx': buildBrokenCode(),
+			};
+		}
 
-    return VALID_FILES;
-  }, [syntaxError]);
+		return VALID_FILES;
+	}, [syntaxError]);
 
-  const statusClassName = useMemo(() => {
-    if (status === 'timeout' || previewLabel !== VALID_LABEL) {
-      return 'status-pill bad';
-    }
+	const statusClassName = useMemo(() => {
+		if (status === 'timeout' || previewLabel !== VALID_LABEL) {
+			return 'status-pill bad';
+		}
 
-    return 'status-pill good';
-  }, [previewLabel, status]);
+		return 'status-pill good';
+	}, [previewLabel, status]);
 
-  return (
-    <div className="app-shell">
-      <div className="page">
-        <div className="header">
-          <div>
-            <h1>Timeout / Restart Repro</h1>
-            <p>Heavy install pressure, low timeout, optional syntax error, and explicit rerun controls.</p>
-          </div>
-          <span className={statusClassName}>status {status} | preview {previewLabel}</span>
-        </div>
+	return (
+		<div className='app-shell'>
+			<div className='page'>
+				<div className='header'>
+					<div>
+						<h1>Timeout / Restart Repro</h1>
+						<p>
+							Heavy install pressure, low timeout, optional syntax error, and
+							explicit rerun controls.
+						</p>
+					</div>
+					<span className={statusClassName}>
+						status {status} | preview {previewLabel}
+					</span>
+				</div>
 
-        <section className="controls">
-          <div className="controls-grid">
-            <label className="control-group">
-              <span>Bundler timeout (ms)</span>
-              <input
-                type="number"
-                min="1000"
-                step="500"
-                value={timeoutMs}
-                onChange={(event) => setTimeoutMs(Number(event.target.value))}
-              />
-            </label>
-            <label className="control-group">
-              <span>Initial syntax error</span>
-              <input
-                type="checkbox"
-                checked={syntaxError}
-                onChange={(event) => setSyntaxError(event.target.checked)}
-              />
-            </label>
-          </div>
-          <div className="actions">
-            <button
-              type="button"
-              onClick={() => {
-                setPreviewLabel('waiting');
-                setRemountNonce((value) => value + 1);
-                appendLog('host', 'remount sandbox');
-              }}
-            >
-              Remount sandbox
-            </button>
-            <button type="button" onClick={() => setLogs([])}>
-              Clear logs
-            </button>
-          </div>
-        </section>
+				<section className='controls'>
+					<div className='controls-grid'>
+						<label className='control-group'>
+							<span>Bundler timeout (ms)</span>
+							<input
+								type='number'
+								min='1000'
+								step='500'
+								value={timeoutMs}
+								onChange={(event) => setTimeoutMs(Number(event.target.value))}
+							/>
+						</label>
+						<label className='control-group'>
+							<span>Initial syntax error</span>
+							<input
+								type='checkbox'
+								checked={syntaxError}
+								onChange={(event) => setSyntaxError(event.target.checked)}
+							/>
+						</label>
+					</div>
+					<div className='actions'>
+						<button
+							type='button'
+							onClick={() => {
+								setPreviewLabel('waiting');
+								setRemountNonce((value) => value + 1);
+								appendLog('host', 'remount sandbox');
+							}}
+						>
+							Remount sandbox
+						</button>
+						<button type='button' onClick={() => setLogs([])}>
+							Clear logs
+						</button>
+					</div>
+				</section>
 
-        <section className="metrics">
-          <div className="metric-row">
-            <span>Sandpack status</span>
-            <code>{status}</code>
-          </div>
-          <div className="metric-row">
-            <span>Preview label</span>
-            <code>{previewLabel}</code>
-          </div>
-          <div className="metric-row">
-            <span>Error message</span>
-            <code>{errorMessage}</code>
-          </div>
-          <div className="metric-row">
-            <span>Timeout configured</span>
-            <code>{timeoutMs}</code>
-          </div>
-        </section>
+				<section className='metrics'>
+					<div className='metric-row'>
+						<span>Sandpack status</span>
+						<code>{status}</code>
+					</div>
+					<div className='metric-row'>
+						<span>Preview label</span>
+						<code>{previewLabel}</code>
+					</div>
+					<div className='metric-row'>
+						<span>Error message</span>
+						<code>{errorMessage}</code>
+					</div>
+					<div className='metric-row'>
+						<span>Timeout configured</span>
+						<code>{timeoutMs}</code>
+					</div>
+				</section>
 
-        <div className="layout">
-          <section className="editor-panel">
-            <SandpackProvider
-              key={remountNonce}
-              template="react-ts"
-              theme={sandpackDark}
-              files={files}
-              customSetup={{ dependencies: HEAVY_DEPENDENCIES }}
-              options={{
-                autorun: true,
-                bundlerTimeOut: timeoutMs,
-                initMode: 'immediate',
-                recompileMode: 'immediate',
-              }}
-            >
-              <TimeoutController
-                syntaxError={syntaxError}
-                timeoutMs={timeoutMs}
-                onStatus={setStatus}
-                onError={setErrorMessage}
-                onLog={appendLog}
-              />
-              <SandpackLayout>
-                <SandpackCodeEditor showTabs={false} />
-                <SandpackPreview showNavigator={false} showOpenInCodeSandbox={false} />
-              </SandpackLayout>
-            </SandpackProvider>
-          </section>
+				<div className='layout'>
+					<section className='editor-panel'>
+						<SandpackProvider
+							key={remountNonce}
+							template='react-ts'
+							theme={sandpackDark}
+							files={files}
+							customSetup={{dependencies: HEAVY_DEPENDENCIES}}
+							options={{
+								autorun: true,
+								bundlerTimeOut: timeoutMs,
+								initMode: 'immediate',
+								recompileMode: 'immediate',
+							}}
+						>
+							<TimeoutController
+								syntaxError={syntaxError}
+								timeoutMs={timeoutMs}
+								onStatus={setStatus}
+								onError={setErrorMessage}
+								onLog={appendLog}
+							/>
+							<SandpackLayout>
+								<SandpackCodeEditor showTabs={false} />
+								<SandpackPreview
+									showNavigator={false}
+									showOpenInCodeSandbox={false}
+								/>
+							</SandpackLayout>
+						</SandpackProvider>
+					</section>
 
-          <section className="logs">
-            <h2>Event log</h2>
-            <ul className="log-list">
-              {logs.map((entry) => (
-                <li className="log-item" key={entry.id}>
-                  <header>
-                    <strong>{entry.source}</strong>
-                    <span>{entry.at}</span>
-                  </header>
-                  <code>{entry.detail}</code>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
-      </div>
-    </div>
-  );
+					<section className='logs'>
+						<h2>Event log</h2>
+						<ul className='log-list'>
+							{logs.map((entry) => (
+								<li className='log-item' key={entry.id}>
+									<header>
+										<strong>{entry.source}</strong>
+										<span>{entry.at}</span>
+									</header>
+									<code>{entry.detail}</code>
+								</li>
+							))}
+						</ul>
+					</section>
+				</div>
+			</div>
+		</div>
+	);
 }

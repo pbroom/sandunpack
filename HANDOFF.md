@@ -29,10 +29,14 @@ The best next step is to keep using this `sandunpack` workspace to validate targ
 
 - The workspace and planned repro fixtures already exist under `fixtures/`.
 - `minimal-startup-race-react` was fixed and merged as a fixture/harness bug, not as a proven Sandpack-core patch.
-- That merged harness fix stabilized `SandpackProvider` props, deduped debug-log rerenders, corrected the template update path from `'/src/App.tsx'` to `'/App.tsx'`, stabilized delayed update scheduling, and removed `React.StrictMode` from the React wrapper fixture.
+- That merged harness fix stabilized `SandpackProvider` props, deduped debug-log rerenders, corrected the template update path from `'/src/App.tsx'` to `'/App.tsx'`, stabilized delayed update scheduling, and removed `React.StrictMode` from the React wrapper fixture. The current workspace also normalizes StrictMode across the remaining repros with a shared `VITE_STRICT_MODE` toggle, so baseline runs stay non-Strict in both the host app and the iframe sandbox unless double-mount behavior is the explicit thing under test.
 - No vendored `Sandpack` patch has been proven by that merged change yet.
-- The current workspace install resolves fixture links into `vendor/sandpack`, and `pnpm check:fixture-links` now enforces that expectation before fixture `dev`, `build`, `check`, and `start:all`.
-- The next highest-value investigations are `minimal-startup-race-client` and `timeout-restart-repro`, now that fixture/source-tree drift fails loudly instead of silently reusing an old sibling checkout.
+- A fresh `pnpm install` under Node 20 repaired stale fixture links that had drifted back to the sibling `sandpack/` checkout. The current workspace install resolves fixture links into `vendor/sandpack`, and `pnpm check:fixture-links`, `pnpm build:vendor`, and `pnpm build:fixtures` all pass against the vendored tree.
+- `minimal-startup-race-client` now behaves like a clean control fixture: baseline startup is single-pass and succeeds, while `VITE_STRICT_MODE=true` duplicates initialization work but still lands on the expected preview state.
+- `timeout-restart-repro` still reproduces its failure in the non-Strict baseline: startup is single-pass, then times out. With `VITE_STRICT_MODE=true`, the fixture shows duplicated client/runtime initialization and registration churn before hitting the same timeout path.
+- `vendor/sandpack/sandpack-react/src/contexts/utils/useClient.ts` had a real registration-lifetime bug: unmounting a live preview could leave a stale iframe registration behind, and the next `runSandpack()` would recreate that unmounted client. There is now a focused regression test for that case and a fix that separates timeout cleanup from actual preview unmount cleanup.
+- After that fix, StrictMode duplication still reproduces in the `sandpack-react` fixtures, but the duplicated startup now looks like the same client ID being initialized twice, not an old unmounted client being revived.
+- The next highest-value investigation is now `timeout-restart-repro`, with `minimal-startup-race-client` retained as the small control fixture for comparison.
 
 ## Recommended Project Shape
 
@@ -75,7 +79,7 @@ Why this shape:
 - do not use bare `yarn` in `vendor/sandpack`; use the wrapper script and Yarn classic `1.22.19`
 - build `sandpack-client`, `sandpack-react`, and `sandpack-themes` before using the fixtures
 - use `pnpm check:fixtures` and `pnpm build:fixtures` for repo-wide validation; `pnpm turbo ...` is not applicable here
-- run `pnpm check:fixture-links` after installs or dependency churn; it compares fixture manifest targets, installed symlink targets, and canonical realpaths, and fails if anything resolves outside `vendor/sandpack`
+- run `pnpm check:fixture-links` after installs or dependency churn; it compares fixture manifest targets, installed symlink targets, and canonical realpaths, and fails if anything resolves outside `vendor/sandpack`. In this workspace, a plain `pnpm install` under Node 20 repaired stale fixture symlinks that had drifted back to the sibling `sandpack/` checkout.
 - fixture `dev`, `build`, and `check` scripts now run that link verifier automatically, and `pnpm start:all` does the same before building or launching fixtures
 
 ## What We Learned In `color-kit`
@@ -389,7 +393,11 @@ Status:
 
 - both versions already exist: `minimal-startup-race-react` and `minimal-startup-race-client`
 - the React wrapper fixture was fixed and merged as a harness issue; treat it as a cleaned baseline, not proof of a Sandpack-core startup/update bug
-- the low-level client fixture is the better next place to prove or disprove a real initialization/update race
+- the low-level client fixture was the right place to re-run the startup-race question after the React harness cleanup
+- current result: baseline startup is single-pass and succeeds in `minimal-startup-race-client`
+- current result: `VITE_STRICT_MODE=true` duplicates initialization work in `minimal-startup-race-client`, but does not currently produce a stale preview or dropped update
+- there is now a vendor-side regression test proving that unmounted preview registrations must be dropped before a later `runSandpack()`
+- that fix does not eliminate the remaining StrictMode duplicate startup in `sandpack-react`; the current duplicate path appears to initialize the same client twice
 
 Shape:
 
@@ -398,6 +406,7 @@ Shape:
 - update to real code shortly after initialization
 - compare editor state vs preview state
 - keep `React.StrictMode` off unless double-mount behavior is the explicit thing under test
+- use `VITE_STRICT_MODE=true` when intentionally testing that double-mount path; the repro fixtures now wire that toggle through both the host mount and the iframe entrypoint
 
 Maintain both forms:
 
@@ -410,11 +419,24 @@ Purpose:
 
 - reproduce timeout plus bad recovery behavior
 
+Status:
+
+- the non-Strict baseline already reproduces the timeout path with single-pass startup work
+- `VITE_STRICT_MODE=true` duplicates client/runtime initialization and registration churn before the same timeout
+- treat StrictMode as a stress variant here, not as the baseline control
+- after timeout, dispatch-based `refresh` and `shell/restart` are skipped because the provider is no longer `running`
+- `sandpack.runSandpack()` and a full remount both recreate clients after timeout; if the timeout budget is increased, both recovery paths succeed in the small repro
+- this matches vendored UI behavior: the built-in timeout `LoadingOverlay` uses `runSandpack()` for `Try again`, and the normal Preview refresh button is only shown while status is `running`
+- no timeout cleanup or client-recreation bug is proven yet in the small repro when the rerun path gets a realistic timeout budget
+- the remaining StrictMode duplication in this fixture still appears to be same-client double initialization, so the next likely bug class is duplicate `initializeSandpackIframe` / `runSandpack` re-entry rather than stale client resurrection
+
 Shape:
 
 - intentionally heavy or slow-to-evaluate example
 - explicit restart button
 - instrumentation around timeout registration, client recreation, and preview reload
+- prioritize preview reset, reconnect behavior, and preview URL state over generic "can any new client be created?" checks, since the basic rerun/remount path already works here
+- the current timeout fixture does not enable Sandpack's experimental service-worker mode, so service-worker lifecycle is probably not part of this specific small repro
 
 ### Fixture C: `color-kit`-style heavy repro
 

@@ -274,7 +274,8 @@ export const useClient: UseClient = (
         queuedClientListeners: Object.keys(
           queuedListeners.current[clientId] ?? {}
         ).length,
-        queuedGlobalListeners: Object.keys(queuedListeners.current.global).length,
+        queuedGlobalListeners: Object.keys(queuedListeners.current.global)
+          .length,
       });
 
       if (typeof unsubscribe.current !== "function") {
@@ -330,17 +331,76 @@ export const useClient: UseClient = (
     ]
   );
 
+  const destroyBundler = useCallback(
+    (clientId: string, shouldDropRegistration: boolean): void => {
+      const client = clients.current[clientId];
+      if (client) {
+        emitDebugEvent("react:unregister-bundler", {
+          clientId,
+          clientStatus: client.status,
+          reason: "destroy-client",
+          dropRegistration: shouldDropRegistration,
+        });
+        client.destroy();
+        client.iframe.contentWindow?.location.replace("about:blank");
+        client.iframe.removeAttribute("src");
+        delete clients.current[clientId];
+      } else {
+        emitDebugEvent("react:unregister-bundler", {
+          clientId,
+          reason: "drop-registration",
+          dropRegistration: shouldDropRegistration,
+        });
+      }
+
+      if (shouldDropRegistration) {
+        delete registeredIframes.current[clientId];
+      }
+
+      if (timeoutHook.current) {
+        clearTimeout(timeoutHook.current);
+        emitDebugEvent("react:timeout:clear", {
+          clientId,
+          reason: "unregister-bundler",
+        });
+      }
+
+      const unsubscribeQueuedClients = Object.values(
+        unsubscribeClientListeners.current[clientId] ?? {}
+      ) as UnsubscribeFunction[];
+
+      // Unsubscribing all listener registered
+      unsubscribeQueuedClients.forEach((unsubscribe) => {
+        unsubscribe();
+      });
+
+      // Keep running if it still have clients
+      const status =
+        Object.keys(clients.current).length > 0 ? "running" : "idle";
+
+      setState((prev) => ({ ...prev, status }));
+      emitDebugEvent("react:unregister-bundler:complete", {
+        clientId,
+        nextStatus: status,
+        remainingClients: Object.keys(clients.current),
+      });
+    },
+    []
+  );
+
   const unregisterAllClients = useCallback((): void => {
     emitDebugEvent("react:clients:unregister-all", {
       clientIds: Object.keys(clients.current),
     });
-    Object.keys(clients.current).map(unregisterBundler);
+    Object.keys(clients.current).forEach((clientId) => {
+      destroyBundler(clientId, false);
+    });
 
     if (typeof unsubscribe.current === "function") {
       unsubscribe.current();
       unsubscribe.current = undefined;
     }
-  }, []);
+  }, [destroyBundler]);
 
   const runSandpack = useCallback(async (): Promise<void> => {
     emitDebugEvent("react:run:start", {
@@ -417,7 +477,6 @@ export const useClient: UseClient = (
     options?.initModeObserverOptions,
     runSandpack,
     state.initMode,
-    unregisterAllClients,
   ]);
 
   const registerBundler = useCallback(
@@ -446,61 +505,20 @@ export const useClient: UseClient = (
     [createClient, options?.startRoute, state.status]
   );
 
-  const unregisterBundler = (clientId: string): void => {
-    const client = clients.current[clientId];
-    if (client) {
-      emitDebugEvent("react:unregister-bundler", {
-        clientId,
-        clientStatus: client.status,
-        reason: "destroy-client",
-      });
-      client.destroy();
-      client.iframe.contentWindow?.location.replace("about:blank");
-      client.iframe.removeAttribute("src");
-      delete clients.current[clientId];
-    } else {
-      emitDebugEvent("react:unregister-bundler", {
-        clientId,
-        reason: "drop-registration",
-      });
-      delete registeredIframes.current[clientId];
-    }
-
-    if (timeoutHook.current) {
-      clearTimeout(timeoutHook.current);
-      emitDebugEvent("react:timeout:clear", {
-        clientId,
-        reason: "unregister-bundler",
-      });
-    }
-
-    const unsubscribeQueuedClients = Object.values(
-      unsubscribeClientListeners.current[clientId] ?? {}
-    );
-
-    // Unsubscribing all listener registered
-    unsubscribeQueuedClients.forEach((listenerOfClient) => {
-      const listenerFunctions = Object.values(listenerOfClient);
-      listenerFunctions.forEach((unsubscribe) => unsubscribe());
-    });
-
-    // Keep running if it still have clients
-    const status = Object.keys(clients.current).length > 0 ? "running" : "idle";
-
-    setState((prev) => ({ ...prev, status }));
-    emitDebugEvent("react:unregister-bundler:complete", {
-      clientId,
-      nextStatus: status,
-      remainingClients: Object.keys(clients.current),
-    });
-  };
+  const unregisterBundler = useCallback(
+    (clientId: string): void => {
+      destroyBundler(clientId, true);
+    },
+    [destroyBundler]
+  );
 
   const handleMessage = (msg: SandpackMessage): void => {
     emitDebugEvent("react:message", {
       type: msg.type,
       action: msg.type === "action" ? msg.action : undefined,
       status: msg.type === "status" ? msg.status : undefined,
-      hasCompilationError: msg.type === "done" ? msg.compilatonError : undefined,
+      hasCompilationError:
+        msg.type === "done" ? msg.compilatonError : undefined,
       entry: msg.type === "state" ? msg.state.entry : undefined,
     });
 

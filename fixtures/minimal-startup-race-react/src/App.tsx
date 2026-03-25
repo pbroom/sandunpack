@@ -13,6 +13,7 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 const PREVIEW_SOURCE = 'minimal-startup-race-react-preview';
 const BLANK_LABEL = 'blank-template';
 const ACCENTS = ['#60a5fa', '#34d399', '#f59e0b', '#f472b6', '#a78bfa'];
+const STRICT_MODE_ENABLED = import.meta.env.VITE_STRICT_MODE === 'true';
 
 interface LogEntry {
 	id: number;
@@ -51,9 +52,39 @@ export default function App() {
 `;
 }
 
+function buildPreviewEntryCode(): string {
+	const reactImport = STRICT_MODE_ENABLED
+		? 'import React, { StrictMode } from "react";\n'
+		: 'import React from "react";\n';
+	const renderApp = STRICT_MODE_ENABLED
+		? `root.render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+);`
+		: 'root.render(<App />);';
+
+	return `${reactImport}import { createRoot } from "react-dom/client";
+import "./styles.css";
+
+import App from "./App";
+
+const root = createRoot(document.getElementById("root")!);
+${renderApp}
+`;
+}
+
 const BLANK_APP_CODE = buildPreviewAppCode(BLANK_LABEL, '#94a3b8');
+const SANDBOX_ENTRY_CODE = buildPreviewEntryCode();
 // Keep provider props referentially stable while the fixture streams debug logs.
-const SANDBOX_FILES = {'/App.tsx': BLANK_APP_CODE};
+// Override the template entry so the iframe uses the same StrictMode setting as the host.
+const SANDBOX_FILES = {
+	'/App.tsx': BLANK_APP_CODE,
+	'/index.tsx': {
+		code: SANDBOX_ENTRY_CODE,
+		hidden: true,
+	},
+};
 const SANDBOX_OPTIONS = {
 	autorun: true,
 	initMode: 'immediate',
