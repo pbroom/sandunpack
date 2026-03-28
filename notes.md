@@ -3,8 +3,8 @@
 ## Quick Resume
 
 - Safe to interrupt right now: yes. No intentional dev server or browser run should be left running between steps.
-- Current focus: `fixtures/heavy-timeout-disconnect-repro` and the vendored timeout machinery behind its `30000` ms stall.
-- Next exact step: prepare the upstream repro/report from `z-tests-manual/test-results-6.md`, using the current last-good / first-bad boundary of `@mui/system@7.3.8` passing versus `7.3.9` failing with the hosted dependency-fetch error.
+- Current focus: the browser-side / hosted-packager root cause behind the `@mui/system@7.3.9` failure, now reduced to the minimal failing package `@mui/types@7.4.12` plus the hosted package-artifact / generator failures behind it.
+- Next exact step: prepare the upstream repro/report from `z-tests-manual/test-results-7.md` and `notes/upstream-mui-types-7.4.12.md`, using the `@mui/types@7.4.11` pass vs `7.4.12` fail split and the direct `403` packager URL evidence.
 
 ## Status
 
@@ -44,12 +44,20 @@
 34. That sweep shows a separate failure class across much of the early 7.x line: `@mui/system@7.0.0`, `7.0.2`, `7.1.0`, `7.2.0`, `7.3.0`, and `7.3.1` all fail with `ModuleNotFoundError` for `@mui/system`, clearing the timer via `message-show-error` within about 1-3 seconds.
 35. The hosted dependency-fetch failure does not begin until later. `@mui/system@7.3.5` and `7.3.8` both pass cleanly, while `@mui/system@latest` (`7.3.9`) fails with `Could not fetch dependencies, please try again in a couple seconds:` and a `message-show-error` timeout clear. That makes the current narrowest practical boundary for the original failure mode last-good `7.3.8`, first-bad `7.3.9`.
 36. Fresh `7.3.9` control runs now keep the preview at `waiting` with the same dependency-fetch error, but the preview client status settles to `done` rather than the earlier `installing-dependencies` observation. Treat that as telemetry drift around the same hosted failure class, not as evidence that the version boundary moved.
+37. Browser-side tracing now shows the exact failing hosted request path for the original `7.3.9` repro. The first bad network step is `GET https://prod-packager-packages.codesandbox.io/v2/packages/@mui/system/7.3.9.json` returning `403`, followed by `POST https://aiwi8rnkp5.execute-api.eu-west-1.amazonaws.com/prod/packages/%40mui%2Fsystem%407.3.9` returning `500 {"error":"...Cannot read properties of null (reading 'browser')"}`.
+38. Raw `postMessage` capture proves the host only receives the generic dependency-fetch `notification` / `show-error` plus a `console` error containing `Error: 500`. The specific upstream `null.browser` response body is already lost before it reaches the Sandpack overlay.
+39. Direct package-generation probes show the hosted generator failure is broader than `@mui/system@7.3.9` itself. The same `500 null.browser` response appears for `@mui/private-theming@7.3.8`, `@mui/private-theming@7.3.9`, `@mui/styled-engine@7.3.9`, `@mui/utils@7.3.9`, and `@mui/types@7.4.12`.
+40. That makes `@mui/system@7.3.9` the first visible top-level repro because it misses the hosted cache and is forced through a package-generation path that is already broken for the newer MUI shared-core family. The current best evidence bundle is now `z-tests-manual/test-results-7.md`, not just the earlier version-boundary matrix.
+41. Added tighter fixture probes around the transitive package boundary: exact `mui-system-v7.3.9`, `mui-types-v7.4.11`, `mui-types-v7.4.12`, a `mui-system-v7.3.9-no-preprocess` control, and `mui-system-v7.3.9` variants that try to pin older internal versions.
+42. Those probes reduce the original failure below `@mui/system`: `@mui/types@7.4.11` passes cleanly, while `@mui/types@7.4.12` alone reproduces the same hosted dependency-fetch failure (`message-show-error`, preview `waiting`, preview client `installing-dependencies`). `disableDependencyPreprocessing` does not avoid it.
+43. Published package diffs back that up too. Between the passing `@mui/system@7.3.8` and failing `7.3.9`, the meaningful manifest change is the dependency tree moving from `@mui/types@^7.4.11` to `^7.4.12`; the runtime JS diffs are effectively version-banner updates only. The strongest current root-cause statement is therefore “the hosted CodeSandbox package pipeline cannot currently serve `@mui/types@7.4.12`,” not “MUI introduced a new runtime incompatibility in `7.3.9`.”
 
 ## Next
 
 1. Keep `fixtures/timeout-restart-repro` as the timeout control, but treat it as a mostly-correct reference now: no client-recreation or preview-reset failure is proven there yet if `runSandpack()` gets a realistic timeout budget.
 2. Keep `fixtures/color-kit-plane-api-repro` as the heavy validation fixture, not the active repro. Its current mount/update/remount path looks stable in both baseline and StrictMode after the latest harness dedupes.
 3. Use `fixtures/heavy-timeout-disconnect-repro` as the active timeout/disconnect probe now, but re-run the heavy `30000` case against the patched vendor code outside Cursor before drawing final conclusions. The main question is whether the newly preserved timeout/global-listener lifecycle now restores the expected timeout behavior for same-client reruns.
-4. Use `z-tests-manual/test-results-6.md` as the current version matrix when preparing the upstream report: early `7.x` releases fail differently (`ModuleNotFoundError`), `7.3.5` and `7.3.8` pass, and `7.3.9` is the first known hosted dependency-fetch failure.
-5. Only probe `@mui/system@7.3.2` or `7.3.3` if upstream specifically wants to know where the earlier module-resolution failure stops. That is no longer necessary to state the original fetch-failure boundary.
-6. Keep `fixtures/minimal-startup-race-client` as the small control fixture unless new baseline evidence shows a real dropped-update race.
+4. Use `z-tests-manual/test-results-7.md` as the primary upstream evidence bundle now. It contains the browser trace, the `@mui/types@7.4.11` pass vs `7.4.12` fail split, and the direct `https://prod-packager-packages.codesandbox.io/v2/packages/@mui/types/{version}.json` contrast (`200` vs `403`).
+5. Use `notes/upstream-mui-types-7.4.12.md` as the upstream-ready issue draft and mitigation sketch. The real fix is still in the hosted package pipeline, but the note also includes the small MUI manifest rollback diff that would avoid `@mui/types@7.4.12` as a temporary mitigation.
+6. Only probe `@mui/system@7.3.2` or `7.3.3` later if upstream specifically wants the exact end of the earlier `ModuleNotFoundError` range. That is no longer necessary to explain the hosted `7.3.9` break.
+7. Keep `fixtures/minimal-startup-race-client` as the small control fixture unless new baseline evidence shows a real dropped-update race.
