@@ -31,6 +31,13 @@ const BASE_DEPENDENCIES = {
 const MUI_MATERIAL_V5_VERSION = '5.18.0';
 const MUI_SYSTEM_V6_VERSION = '6.5.0';
 const MUI_SYSTEM_V7_0_VERSION = '7.0.0';
+const MUI_SYSTEM_V7_0_2_VERSION = '7.0.2';
+const MUI_SYSTEM_V7_1_0_VERSION = '7.1.0';
+const MUI_SYSTEM_V7_2_0_VERSION = '7.2.0';
+const MUI_SYSTEM_V7_3_0_VERSION = '7.3.0';
+const MUI_SYSTEM_V7_3_1_VERSION = '7.3.1';
+const MUI_SYSTEM_V7_3_5_VERSION = '7.3.5';
+const MUI_SYSTEM_V7_3_8_VERSION = '7.3.8';
 
 const DEPENDENCY_PROFILES = {
 	'core-only': {
@@ -93,6 +100,76 @@ const DEPENDENCY_PROFILES = {
 			'@emotion/react': 'latest',
 			'@emotion/styled': 'latest',
 			'@mui/system': MUI_SYSTEM_V7_0_VERSION,
+		},
+	},
+	'mui-system-v7.0.2': {
+		label: 'mui-system-v7.0.2',
+		description: `emotion-bundle + @mui/system@${MUI_SYSTEM_V7_0_2_VERSION}`,
+		dependencies: {
+			...BASE_DEPENDENCIES,
+			'@emotion/react': 'latest',
+			'@emotion/styled': 'latest',
+			'@mui/system': MUI_SYSTEM_V7_0_2_VERSION,
+		},
+	},
+	'mui-system-v7.1.0': {
+		label: 'mui-system-v7.1.0',
+		description: `emotion-bundle + @mui/system@${MUI_SYSTEM_V7_1_0_VERSION}`,
+		dependencies: {
+			...BASE_DEPENDENCIES,
+			'@emotion/react': 'latest',
+			'@emotion/styled': 'latest',
+			'@mui/system': MUI_SYSTEM_V7_1_0_VERSION,
+		},
+	},
+	'mui-system-v7.2.0': {
+		label: 'mui-system-v7.2.0',
+		description: `emotion-bundle + @mui/system@${MUI_SYSTEM_V7_2_0_VERSION}`,
+		dependencies: {
+			...BASE_DEPENDENCIES,
+			'@emotion/react': 'latest',
+			'@emotion/styled': 'latest',
+			'@mui/system': MUI_SYSTEM_V7_2_0_VERSION,
+		},
+	},
+	'mui-system-v7.3.0': {
+		label: 'mui-system-v7.3.0',
+		description: `emotion-bundle + @mui/system@${MUI_SYSTEM_V7_3_0_VERSION}`,
+		dependencies: {
+			...BASE_DEPENDENCIES,
+			'@emotion/react': 'latest',
+			'@emotion/styled': 'latest',
+			'@mui/system': MUI_SYSTEM_V7_3_0_VERSION,
+		},
+	},
+	'mui-system-v7.3.1': {
+		label: 'mui-system-v7.3.1',
+		description: `emotion-bundle + @mui/system@${MUI_SYSTEM_V7_3_1_VERSION}`,
+		dependencies: {
+			...BASE_DEPENDENCIES,
+			'@emotion/react': 'latest',
+			'@emotion/styled': 'latest',
+			'@mui/system': MUI_SYSTEM_V7_3_1_VERSION,
+		},
+	},
+	'mui-system-v7.3.5': {
+		label: 'mui-system-v7.3.5',
+		description: `emotion-bundle + @mui/system@${MUI_SYSTEM_V7_3_5_VERSION}`,
+		dependencies: {
+			...BASE_DEPENDENCIES,
+			'@emotion/react': 'latest',
+			'@emotion/styled': 'latest',
+			'@mui/system': MUI_SYSTEM_V7_3_5_VERSION,
+		},
+	},
+	'mui-system-v7.3.8': {
+		label: 'mui-system-v7.3.8',
+		description: `emotion-bundle + @mui/system@${MUI_SYSTEM_V7_3_8_VERSION}`,
+		dependencies: {
+			...BASE_DEPENDENCIES,
+			'@emotion/react': 'latest',
+			'@emotion/styled': 'latest',
+			'@mui/system': MUI_SYSTEM_V7_3_8_VERSION,
 		},
 	},
 	'mui-bundle': {

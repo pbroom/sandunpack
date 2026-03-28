@@ -4,7 +4,7 @@
 
 - Safe to interrupt right now: yes. No intentional dev server or browser run should be left running between steps.
 - Current focus: `fixtures/heavy-timeout-disconnect-repro` and the vendored timeout machinery behind its `30000` ms stall.
-- Next exact step: rerun the heavy fixture at `30000` outside Cursor against the pinned `mui-system-v7.0` profile to determine whether the dependency-fetch failure spans the whole MUI 7.x line or only later 7.x releases.
+- Next exact step: prepare the upstream repro/report from `z-tests-manual/test-results-6.md`, using the current last-good / first-bad boundary of `@mui/system@7.3.8` passing versus `7.3.9` failing with the hosted dependency-fetch error.
 
 ## Status
 
@@ -40,11 +40,16 @@
 30. The third manual comparison moves the boundary again: `mui-system-bundle` fails the same way as `mui-bundle`, while `mui-bundle-v5` passes. That means `@mui/material` is not required to reproduce the failure and the issue is unlikely to be raw dependency count; the problem now looks tied to the newer MUI shared core line.
 31. `fixtures/heavy-timeout-disconnect-repro` now also includes `mui-system-v6`, pinned to `@mui/system@6.5.0`.
 32. The fourth manual comparison closes that gap too: `mui-system-v6` passes cleanly, while `mui-system-bundle` (`@mui/system@latest`, currently `7.3.9`) still fails. That makes the dependency-fetch failure look likely 7.x-specific in the shared MUI core line, not a general Emotion or MUI 5/6 issue.
+33. Added pinned `@mui/system` probes for `7.0.0`, `7.0.2`, `7.1.0`, `7.2.0`, `7.3.0`, `7.3.1`, `7.3.5`, and `7.3.8`, then automated the heavy fixture in headless Chrome using the explicit `Call runSandpack()` path after each profile change.
+34. That sweep shows a separate failure class across much of the early 7.x line: `@mui/system@7.0.0`, `7.0.2`, `7.1.0`, `7.2.0`, `7.3.0`, and `7.3.1` all fail with `ModuleNotFoundError` for `@mui/system`, clearing the timer via `message-show-error` within about 1-3 seconds.
+35. The hosted dependency-fetch failure does not begin until later. `@mui/system@7.3.5` and `7.3.8` both pass cleanly, while `@mui/system@latest` (`7.3.9`) fails with `Could not fetch dependencies, please try again in a couple seconds:` and a `message-show-error` timeout clear. That makes the current narrowest practical boundary for the original failure mode last-good `7.3.8`, first-bad `7.3.9`.
+36. Fresh `7.3.9` control runs now keep the preview at `waiting` with the same dependency-fetch error, but the preview client status settles to `done` rather than the earlier `installing-dependencies` observation. Treat that as telemetry drift around the same hosted failure class, not as evidence that the version boundary moved.
 
 ## Next
 
 1. Keep `fixtures/timeout-restart-repro` as the timeout control, but treat it as a mostly-correct reference now: no client-recreation or preview-reset failure is proven there yet if `runSandpack()` gets a realistic timeout budget.
 2. Keep `fixtures/color-kit-plane-api-repro` as the heavy validation fixture, not the active repro. Its current mount/update/remount path looks stable in both baseline and StrictMode after the latest harness dedupes.
 3. Use `fixtures/heavy-timeout-disconnect-repro` as the active timeout/disconnect probe now, but re-run the heavy `30000` case against the patched vendor code outside Cursor before drawing final conclusions. The main question is whether the newly preserved timeout/global-listener lifecycle now restores the expected timeout behavior for same-client reruns.
-4. Use the pinned `mui-system-v7.0` profile plus the existing `Error message`, `Last timeout clear`, and `Timeout-clearing error` fields to determine whether the dependency-fetch failure spans the whole MUI 7.x line or only later 7.x releases.
-5. Keep `fixtures/minimal-startup-race-client` as the small control fixture unless new baseline evidence shows a real dropped-update race.
+4. Use `z-tests-manual/test-results-6.md` as the current version matrix when preparing the upstream report: early `7.x` releases fail differently (`ModuleNotFoundError`), `7.3.5` and `7.3.8` pass, and `7.3.9` is the first known hosted dependency-fetch failure.
+5. Only probe `@mui/system@7.3.2` or `7.3.3` if upstream specifically wants to know where the earlier module-resolution failure stops. That is no longer necessary to state the original fetch-failure boundary.
+6. Keep `fixtures/minimal-startup-race-client` as the small control fixture unless new baseline evidence shows a real dropped-update race.
