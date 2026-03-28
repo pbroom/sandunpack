@@ -1,0 +1,28 @@
+{
+	"name": "heavy-timeout-disconnect-repro",
+	"private": true,
+	"version": "0.1.0",
+	"type": "module",
+	"scripts": {
+		"predev": "node ../../scripts/check-fixture-links.mjs --fixture .",
+		"dev": "vite --port 4177",
+		"prebuild": "node ../../scripts/check-fixture-links.mjs --fixture .",
+		"build": "tsc --noEmit && vite build",
+		"precheck": "node ../../scripts/check-fixture-links.mjs --fixture .",
+		"check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@codesandbox/sandpack-client": "link:../../vendor/sandpack/sandpack-client",
+		"@codesandbox/sandpack-react": "link:../../vendor/sandpack/sandpack-react",
+		"@codesandbox/sandpack-themes": "link:../../vendor/sandpack/sandpack-themes",
+		"react": "^18.2.0",
+		"react-dom": "^18.2.0"
+	},
+	"devDependencies": {
+		"@types/react": "^18.2.79",
+		"@types/react-dom": "^18.2.25",
+		"@vitejs/plugin-react": "^5.0.0",
+		"typescript": "^5.8.3",
+		"vite": "^7.1.3"
+	}
+}

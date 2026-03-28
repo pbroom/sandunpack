@@ -5,16 +5,18 @@ import {
 	SandpackLayout,
 	SandpackPreview,
 	SandpackProvider,
+	type SandpackPreviewRef,
 	useSandpack,
 	useSandpackNavigation,
 	useSandpackShell,
 } from '@codesandbox/sandpack-react';
 import {sandpackDark} from '@codesandbox/sandpack-themes';
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 
 const PREVIEW_SOURCE = 'timeout-restart-preview';
 const VALID_LABEL = 'timeout-valid';
 const STRICT_MODE_ENABLED = import.meta.env.VITE_STRICT_MODE === 'true';
+const DEBUG_EVENT_LOGS_ENABLED = import.meta.env.VITE_SANDPACK_DEBUG === 'true';
 const HEAVY_DEPENDENCIES = {
 	'@emotion/react': 'latest',
 	'@emotion/styled': 'latest',
@@ -30,12 +32,22 @@ interface LogEntry {
 	at: string;
 }
 
+interface PreviewDiagnostics {
+	clientId: string;
+	clientStatus: string;
+	iframeSrc: string;
+	previewUrl: string;
+	lastProbe: string;
+	lastUrlChange: string;
+}
+
 interface TimeoutControllerProps {
 	syntaxError: boolean;
 	timeoutMs: number;
 	onStatus: (status: string) => void;
 	onError: (message: string) => void;
 	onLog: (source: string, detail: string) => void;
+	onPreviewDiagnostics: (source: string, url?: string) => void;
 }
 
 function buildHeavyModule(): string {
@@ -131,8 +143,20 @@ function summarizeMessage(message: SandpackMessage): string {
 		return `${message.type}:${message.action}`;
 	}
 
+	if (message.type === 'status') {
+		return `${message.type}:${message.status}`;
+	}
+
 	if (message.type === 'state') {
 		return `${message.type}:${message.state.entry}`;
+	}
+
+	if (message.type === 'urlchange') {
+		return `${message.type}:${message.url}`;
+	}
+
+	if (message.type === 'done') {
+		return `${message.type}:compilationError=${String(message.compilatonError)}`;
 	}
 
 	return message.type;
@@ -144,6 +168,7 @@ function TimeoutController({
 	onStatus,
 	onError,
 	onLog,
+	onPreviewDiagnostics,
 }: TimeoutControllerProps) {
 	const {sandpack, listen} = useSandpack();
 	const {refresh} = useSandpackNavigation();
@@ -152,13 +177,31 @@ function TimeoutController({
 	useEffect(() => {
 		onStatus(sandpack.status);
 		onError(sandpack.error?.message ?? 'none');
-	}, [onError, onStatus, sandpack.error?.message, sandpack.status]);
+		onPreviewDiagnostics(`status:${sandpack.status}`);
+	}, [
+		onError,
+		onPreviewDiagnostics,
+		onStatus,
+		sandpack.error?.message,
+		sandpack.status,
+	]);
 
 	useEffect(() => {
 		return listen((message) => {
-			onLog('listen', summarizeMessage(message));
+			if (DEBUG_EVENT_LOGS_ENABLED) {
+				onLog('listen', summarizeMessage(message));
+			}
+
+			if (message.type === 'urlchange') {
+				onPreviewDiagnostics('urlchange', message.url);
+				return;
+			}
+
+			if (DEBUG_EVENT_LOGS_ENABLED) {
+				onPreviewDiagnostics(`message:${message.type}`);
+			}
 		});
-	}, [listen, onLog]);
+	}, [listen, onLog, onPreviewDiagnostics]);
 
 	return (
 		<section className='controls' style={{marginBottom: 16}}>
@@ -211,6 +254,16 @@ export default function App() {
 	const [status, setStatus] = useState('initial');
 	const [errorMessage, setErrorMessage] = useState('none');
 	const [logs, setLogs] = useState<LogEntry[]>([]);
+	const [previewDiagnostics, setPreviewDiagnostics] =
+		useState<PreviewDiagnostics>({
+			clientId: 'unmounted',
+			clientStatus: 'missing',
+			iframeSrc: 'none',
+			previewUrl: 'none',
+			lastProbe: 'initial',
+			lastUrlChange: 'none',
+		});
+	const previewRef = useRef<SandpackPreviewRef | null>(null);
 
 	const appendLog = useCallback((source: string, detail: string) => {
 		setLogs((current) =>
@@ -226,8 +279,53 @@ export default function App() {
 		);
 	}, []);
 
+	const syncPreviewDiagnostics = useCallback((source: string, url?: string) => {
+		const previewHandle = previewRef.current;
+		const client = previewHandle?.getClient() as {
+			status?: string;
+			iframe?: HTMLIFrameElement;
+			iframePreviewUrl?: string;
+		} | null;
+
+		const nextClientId = previewHandle?.clientId ?? 'unmounted';
+		const nextClientStatus = client?.status ?? 'missing';
+		const nextIframeSrc =
+			client?.iframe?.getAttribute('src') ?? client?.iframe?.src ?? 'none';
+		const nextPreviewUrl = client?.iframePreviewUrl ?? 'none';
+
+		setPreviewDiagnostics((current) => {
+			const nextLastUrlChange = url ?? current.lastUrlChange;
+
+			if (
+				current.clientId === nextClientId &&
+				current.clientStatus === nextClientStatus &&
+				current.iframeSrc === nextIframeSrc &&
+				current.previewUrl === nextPreviewUrl &&
+				current.lastProbe === source &&
+				current.lastUrlChange === nextLastUrlChange
+			) {
+				return current;
+			}
+
+			return {
+				clientId: nextClientId,
+				clientStatus: nextClientStatus,
+				iframeSrc: nextIframeSrc,
+				previewUrl: nextPreviewUrl,
+				lastProbe: source,
+				lastUrlChange: nextLastUrlChange,
+			};
+		});
+	}, []);
+
 	useEffect(() => {
-		window.__SANDPACK_DEBUG__ = true;
+		window.__SANDPACK_DEBUG__ = DEBUG_EVENT_LOGS_ENABLED;
+
+		if (!DEBUG_EVENT_LOGS_ENABLED) {
+			return () => {
+				window.__SANDPACK_DEBUG__ = false;
+			};
+		}
 
 		const handleDebug = (event: Event) => {
 			const detail = (
@@ -246,6 +344,7 @@ export default function App() {
 				'sandpack-debug',
 				handleDebug as EventListener,
 			);
+			window.__SANDPACK_DEBUG__ = false;
 		};
 	}, [appendLog]);
 
@@ -258,13 +357,18 @@ export default function App() {
 
 			setPreviewLabel(payload.label);
 			appendLog('preview', payload.label);
+			syncPreviewDiagnostics('preview-postmessage');
 		};
 
 		window.addEventListener('message', handleMessage);
 		return () => {
 			window.removeEventListener('message', handleMessage);
 		};
-	}, [appendLog]);
+	}, [appendLog, syncPreviewDiagnostics]);
+
+	useEffect(() => {
+		syncPreviewDiagnostics(`app-status:${status}`);
+	}, [status, syncPreviewDiagnostics]);
 
 	const files = useMemo(() => {
 		if (syntaxError) {
@@ -356,6 +460,30 @@ export default function App() {
 						<span>Timeout configured</span>
 						<code>{timeoutMs}</code>
 					</div>
+					<div className='metric-row'>
+						<span>Preview client id</span>
+						<code>{previewDiagnostics.clientId}</code>
+					</div>
+					<div className='metric-row'>
+						<span>Preview client status</span>
+						<code>{previewDiagnostics.clientStatus}</code>
+					</div>
+					<div className='metric-row'>
+						<span>Preview URL</span>
+						<code>{previewDiagnostics.previewUrl}</code>
+					</div>
+					<div className='metric-row'>
+						<span>Preview iframe src</span>
+						<code>{previewDiagnostics.iframeSrc}</code>
+					</div>
+					<div className='metric-row'>
+						<span>Last urlchange</span>
+						<code>{previewDiagnostics.lastUrlChange}</code>
+					</div>
+					<div className='metric-row'>
+						<span>Last preview probe</span>
+						<code>{previewDiagnostics.lastProbe}</code>
+					</div>
 				</section>
 
 				<div className='layout'>
@@ -379,10 +507,12 @@ export default function App() {
 								onStatus={setStatus}
 								onError={setErrorMessage}
 								onLog={appendLog}
+								onPreviewDiagnostics={syncPreviewDiagnostics}
 							/>
 							<SandpackLayout>
 								<SandpackCodeEditor showTabs={false} />
 								<SandpackPreview
+									ref={previewRef}
 									showNavigator={false}
 									showOpenInCodeSandbox={false}
 								/>

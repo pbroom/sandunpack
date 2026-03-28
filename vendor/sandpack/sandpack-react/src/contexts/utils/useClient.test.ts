@@ -28,6 +28,40 @@ const mockedLoadSandpackClient =
     typeof sandpackClient.loadSandpackClient
   >;
 
+const createMockClient = (iframe: HTMLIFrameElement) => {
+  return createMockClientController(iframe).client;
+};
+
+const createMockClientController = (iframe: HTMLIFrameElement) => {
+  const listeners: sandpackClient.ListenerFunction[] = [];
+
+  return {
+    client: {
+      status: "initializing",
+      iframe,
+      listen: jest.fn((listener: sandpackClient.ListenerFunction) => {
+        listeners.push(listener);
+
+        return jest.fn(() => {
+          const listenerIndex = listeners.indexOf(listener);
+
+          if (listenerIndex >= 0) {
+            listeners.splice(listenerIndex, 1);
+          }
+        });
+      }),
+      dispatch: jest.fn(),
+      updateSandbox: jest.fn(),
+      destroy: jest.fn(),
+    } as unknown as InstanceType<typeof sandpackClient.SandpackClient>,
+    emit(message: sandpackClient.SandpackMessage) {
+      listeners.forEach((listener) => {
+        listener(message);
+      });
+    },
+  };
+};
+
 beforeEach(() => {
   mockedLoadSandpackClient.mockReset();
   mockedLoadSandpackClient.mockImplementation((...args) =>
@@ -464,6 +498,102 @@ describe(useClient, () => {
 
       expect(mockedLoadSandpackClient).toHaveBeenCalledTimes(1);
       expect(Object.keys(operations.clients)).toEqual(["client-1"]);
+    });
+
+    it("keeps the timeout armed when rerunning the same registered client", async () => {
+      jest.useFakeTimers();
+
+      mockedLoadSandpackClient.mockImplementation(async (iframeSelector) => {
+        return createMockClient(iframeSelector as HTMLIFrameElement);
+      });
+
+      try {
+        const { result } = renderHook(() =>
+          useClient(
+            { options: { bundlerTimeOut: 1000 } },
+            getSandpackStateFromProps({})
+          )
+        );
+        const operations = result.current[1];
+
+        await act(async () => {
+          await operations.registerBundler(
+            document.createElement("iframe"),
+            "client-1"
+          );
+          await operations.runSandpack();
+        });
+
+        expect(result.current[0].status).toBe("running");
+
+        await act(async () => {
+          await operations.runSandpack();
+        });
+
+        act(() => {
+          jest.advanceTimersByTime(1000);
+        });
+
+        expect(result.current[0].status).toBe("timeout");
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it("keeps the last runtime error until the client actually recovers", async () => {
+      const iframe = document.createElement("iframe");
+      const clientController = createMockClientController(iframe);
+
+      mockedLoadSandpackClient.mockResolvedValue(clientController.client);
+
+      const { result } = renderHook(() =>
+        useClient({}, getSandpackStateFromProps({}))
+      );
+      const operations = result.current[1];
+
+      await act(async () => {
+        await operations.registerBundler(iframe, "client-1");
+        await operations.runSandpack();
+      });
+
+      act(() => {
+        clientController.emit({
+          type: "action",
+          action: "show-error",
+          title: "Error",
+          path: "/App.tsx",
+          message:
+            "Could not fetch dependencies, please try again in a couple seconds:",
+          line: 1,
+          column: 1,
+          payload: {},
+        } as sandpackClient.SandpackMessage);
+      });
+
+      expect(result.current[0].error?.message).toBe(
+        "Could not fetch dependencies, please try again in a couple seconds:"
+      );
+      expect(result.current[0].status).toBe("running");
+
+      act(() => {
+        clientController.emit({
+          type: "start",
+        } as sandpackClient.SandpackMessage);
+      });
+
+      expect(result.current[0].error?.message).toBe(
+        "Could not fetch dependencies, please try again in a couple seconds:"
+      );
+      expect(result.current[0].status).toBe("running");
+
+      act(() => {
+        clientController.emit({
+          type: "connected",
+        } as sandpackClient.SandpackMessage);
+      });
+
+      expect(result.current[0].error).toBeNull();
+      expect(result.current[0].status).toBe("running");
     });
   });
 

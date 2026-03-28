@@ -14,6 +14,7 @@ const PREVIEW_SOURCE = 'minimal-startup-race-react-preview';
 const BLANK_LABEL = 'blank-template';
 const ACCENTS = ['#60a5fa', '#34d399', '#f59e0b', '#f472b6', '#a78bfa'];
 const STRICT_MODE_ENABLED = import.meta.env.VITE_STRICT_MODE === 'true';
+const DEBUG_EVENT_LOGS_ENABLED = import.meta.env.VITE_SANDPACK_DEBUG === 'true';
 
 interface LogEntry {
 	id: number;
@@ -131,6 +132,10 @@ function RaceController({
 	}, [onStatus, sandpack.status]);
 
 	useEffect(() => {
+		if (!DEBUG_EVENT_LOGS_ENABLED) {
+			return;
+		}
+
 		return listen((message) => {
 			onLog('listen', summarizeMessage(message));
 		});
@@ -200,7 +205,13 @@ export default function App() {
 	}, []);
 
 	useEffect(() => {
-		window.__SANDPACK_DEBUG__ = true;
+		window.__SANDPACK_DEBUG__ = DEBUG_EVENT_LOGS_ENABLED;
+
+		if (!DEBUG_EVENT_LOGS_ENABLED) {
+			return () => {
+				window.__SANDPACK_DEBUG__ = false;
+			};
+		}
 
 		const handleDebug = (event: Event) => {
 			const detail = (
@@ -225,6 +236,7 @@ export default function App() {
 				'sandpack-debug',
 				handleDebug as EventListener,
 			);
+			window.__SANDPACK_DEBUG__ = false;
 		};
 	}, [appendLog]);
 

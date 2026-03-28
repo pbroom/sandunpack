@@ -8,7 +8,7 @@ import {
 	useSandpack,
 } from '@codesandbox/sandpack-react';
 import {sandpackDark} from '@codesandbox/sandpack-themes';
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 
 const PREVIEW_SOURCE = 'color-kit-plane-api-repro-preview';
 const BLANK_HUE = 210;
@@ -16,6 +16,7 @@ const HUE_SEQUENCE = [210, 240, 280, 320, 20];
 const RAW_IMPORT_PATTERN = /(['"])@color-kit\/core\1/;
 const REWRITTEN_IMPORT = "'./color-kit-core/index.ts'";
 const STRICT_MODE_ENABLED = import.meta.env.VITE_STRICT_MODE === 'true';
+const DEBUG_EVENT_LOGS_ENABLED = import.meta.env.VITE_SANDPACK_DEBUG === 'true';
 
 interface LogEntry {
 	id: number;
@@ -174,11 +175,22 @@ function SandpackAutoRun({
 	onLog: (source: string, detail: string) => void;
 }) {
 	const {sandpack} = useSandpack();
+	const didRunOnMount = useRef(false);
+	const runSandpackRef = useRef(sandpack.runSandpack);
 
 	useEffect(() => {
+		runSandpackRef.current = sandpack.runSandpack;
+	}, [sandpack.runSandpack]);
+
+	useEffect(() => {
+		if (didRunOnMount.current) {
+			return;
+		}
+
+		didRunOnMount.current = true;
 		onLog('host', 'runSandpack() on mount');
-		void sandpack.runSandpack();
-	}, [onLog, sandpack]);
+		void runSandpackRef.current();
+	}, [onLog]);
 
 	return null;
 }
@@ -191,30 +203,41 @@ function HeavyController({
 	onLog,
 }: HeavyControllerProps) {
 	const {sandpack, listen} = useSandpack();
+	const lastAppliedUpdateNonce = useRef(0);
+	const updateFileRef = useRef(sandpack.updateFile);
+
+	useEffect(() => {
+		updateFileRef.current = sandpack.updateFile;
+	}, [sandpack.updateFile]);
 
 	useEffect(() => {
 		onStatus(sandpack.status);
 	}, [onStatus, sandpack.status]);
 
 	useEffect(() => {
+		if (!DEBUG_EVENT_LOGS_ENABLED) {
+			return;
+		}
+
 		return listen((message) => {
 			onLog('listen', summarizeMessage(message));
 		});
 	}, [listen, onLog]);
 
 	useEffect(() => {
-		if (updateNonce === 0) {
+		if (updateNonce === 0 || lastAppliedUpdateNonce.current === updateNonce) {
 			return;
 		}
 
+		lastAppliedUpdateNonce.current = updateNonce;
 		const label = `hue-${targetHue}`;
 		onExpectedLabel(label);
 		onLog('updateFile', label);
-		sandpack.updateFile(
+		updateFileRef.current(
 			'/App.tsx',
 			toSandpackSource(buildRawAppSource(targetHue)),
 		);
-	}, [onExpectedLabel, onLog, targetHue, sandpack, updateNonce]);
+	}, [onExpectedLabel, onLog, targetHue, updateNonce]);
 
 	return null;
 }
@@ -243,7 +266,13 @@ export default function App() {
 	}, []);
 
 	useEffect(() => {
-		window.__SANDPACK_DEBUG__ = true;
+		window.__SANDPACK_DEBUG__ = DEBUG_EVENT_LOGS_ENABLED;
+
+		if (!DEBUG_EVENT_LOGS_ENABLED) {
+			return () => {
+				window.__SANDPACK_DEBUG__ = false;
+			};
+		}
 
 		const handleDebug = (event: Event) => {
 			const detail = (
@@ -262,6 +291,7 @@ export default function App() {
 				'sandpack-debug',
 				handleDebug as EventListener,
 			);
+			window.__SANDPACK_DEBUG__ = false;
 		};
 	}, [appendLog]);
 
@@ -374,7 +404,7 @@ export default function App() {
 							theme={sandpackDark}
 							files={files}
 							options={{
-								autorun: true,
+								autorun: false,
 								bundlerTimeOut: 20000,
 								initMode: 'immediate',
 								recompileMode: 'delayed',
