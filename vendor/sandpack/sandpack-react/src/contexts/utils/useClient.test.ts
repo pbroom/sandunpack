@@ -82,6 +82,35 @@ const getAmountOfListener = (
 };
 
 describe(useClient, () => {
+  it("forwards disableDependencyPreprocessing to the client sandbox setup", async () => {
+    const props = {
+      template: "react" as const,
+      customSetup: {
+        disableDependencyPreprocessing: true,
+      },
+    };
+    const iframe = document.createElement("iframe");
+    mockedLoadSandpackClient.mockResolvedValue(createMockClient(iframe));
+
+    const { result } = renderHook(() =>
+      useClient(props, getSandpackStateFromProps(props))
+    );
+    const operations = result.current[1];
+
+    await act(async () => {
+      await operations.registerBundler(iframe, "client-1");
+      await operations.runSandpack();
+    });
+
+    expect(
+      mockedLoadSandpackClient.mock.calls[0]?.[1]
+    ).toEqual(
+      expect.objectContaining({
+        disableDependencyPreprocessing: true,
+      })
+    );
+  });
+
   describe("listeners", () => {
     it("sets a listener, but the client hasn't been created yet - no global listener", async () => {
       const { result } = renderHook(() =>

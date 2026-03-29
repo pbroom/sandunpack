@@ -22,6 +22,7 @@ export interface SandpackContextInfo {
   visibleFiles: string[];
   files: Record<string, SandpackBundlerFile>;
   environment: SandboxEnvironment;
+  disableDependencyPreprocessing?: boolean;
   shouldUpdatePreview: true;
 }
 
@@ -114,6 +115,8 @@ export const getSandpackStateFromProps = (
     activeFile: activeFile!,
     files,
     environment: projectSetup.environment,
+    disableDependencyPreprocessing:
+      projectSetup.disableDependencyPreprocessing,
     shouldUpdatePreview: true,
   };
 };
@@ -237,6 +240,8 @@ const combineTemplateFilesToSetup = ({
     entry: normalizePath(customSetup?.entry),
     main: baseTemplate.main,
     environment: customSetup?.environment || baseTemplate.environment,
+    disableDependencyPreprocessing:
+      customSetup?.disableDependencyPreprocessing,
   } as SandboxTemplate;
 };
 

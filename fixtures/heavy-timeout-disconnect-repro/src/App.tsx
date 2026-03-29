@@ -38,6 +38,9 @@ const MUI_SYSTEM_V7_3_0_VERSION = '7.3.0';
 const MUI_SYSTEM_V7_3_1_VERSION = '7.3.1';
 const MUI_SYSTEM_V7_3_5_VERSION = '7.3.5';
 const MUI_SYSTEM_V7_3_8_VERSION = '7.3.8';
+const MUI_SYSTEM_V7_3_9_VERSION = '7.3.9';
+const MUI_TYPES_V7_4_11_VERSION = '7.4.11';
+const MUI_TYPES_V7_4_12_VERSION = '7.4.12';
 
 const DEPENDENCY_PROFILES = {
 	'core-only': {
@@ -170,6 +173,68 @@ const DEPENDENCY_PROFILES = {
 			'@emotion/react': 'latest',
 			'@emotion/styled': 'latest',
 			'@mui/system': MUI_SYSTEM_V7_3_8_VERSION,
+		},
+	},
+	'mui-system-v7.3.9': {
+		label: 'mui-system-v7.3.9',
+		description: `emotion-bundle + @mui/system@${MUI_SYSTEM_V7_3_9_VERSION}`,
+		dependencies: {
+			...BASE_DEPENDENCIES,
+			'@emotion/react': 'latest',
+			'@emotion/styled': 'latest',
+			'@mui/system': MUI_SYSTEM_V7_3_9_VERSION,
+		},
+	},
+	'mui-system-v7.3.9-types-7.4.11': {
+		label: 'mui-system-v7.3.9-types-7.4.11',
+		description: `emotion-bundle + @mui/system@${MUI_SYSTEM_V7_3_9_VERSION} + @mui/types@${MUI_TYPES_V7_4_11_VERSION}`,
+		dependencies: {
+			...BASE_DEPENDENCIES,
+			'@emotion/react': 'latest',
+			'@emotion/styled': 'latest',
+			'@mui/system': MUI_SYSTEM_V7_3_9_VERSION,
+			'@mui/types': MUI_TYPES_V7_4_11_VERSION,
+		},
+	},
+	'mui-system-v7.3.9-frozen-internals': {
+		label: 'mui-system-v7.3.9-frozen-internals',
+		description: `emotion-bundle + @mui/system@${MUI_SYSTEM_V7_3_9_VERSION} with @mui/{utils,private-theming,styled-engine}@7.3.8 and @mui/types@${MUI_TYPES_V7_4_11_VERSION}`,
+		dependencies: {
+			...BASE_DEPENDENCIES,
+			'@emotion/react': 'latest',
+			'@emotion/styled': 'latest',
+			'@mui/system': MUI_SYSTEM_V7_3_9_VERSION,
+			'@mui/utils': MUI_SYSTEM_V7_3_8_VERSION,
+			'@mui/private-theming': MUI_SYSTEM_V7_3_8_VERSION,
+			'@mui/styled-engine': MUI_SYSTEM_V7_3_8_VERSION,
+			'@mui/types': MUI_TYPES_V7_4_11_VERSION,
+		},
+	},
+	'mui-system-v7.3.9-no-preprocess': {
+		label: 'mui-system-v7.3.9-no-preprocess',
+		description: `emotion-bundle + @mui/system@${MUI_SYSTEM_V7_3_9_VERSION} + disableDependencyPreprocessing`,
+		dependencies: {
+			...BASE_DEPENDENCIES,
+			'@emotion/react': 'latest',
+			'@emotion/styled': 'latest',
+			'@mui/system': MUI_SYSTEM_V7_3_9_VERSION,
+		},
+		disableDependencyPreprocessing: true,
+	},
+	'mui-types-v7.4.11': {
+		label: 'mui-types-v7.4.11',
+		description: `core + @mui/types@${MUI_TYPES_V7_4_11_VERSION}`,
+		dependencies: {
+			...BASE_DEPENDENCIES,
+			'@mui/types': MUI_TYPES_V7_4_11_VERSION,
+		},
+	},
+	'mui-types-v7.4.12': {
+		label: 'mui-types-v7.4.12',
+		description: `core + @mui/types@${MUI_TYPES_V7_4_12_VERSION}`,
+		dependencies: {
+			...BASE_DEPENDENCIES,
+			'@mui/types': MUI_TYPES_V7_4_12_VERSION,
 		},
 	},
 	'mui-bundle': {
@@ -1537,7 +1602,11 @@ export default function App() {
 						template='react-ts'
 						theme={sandpackDark}
 						files={sandpackFiles}
-						customSetup={{dependencies: dependencyProfile.dependencies}}
+						customSetup={{
+							dependencies: dependencyProfile.dependencies,
+							disableDependencyPreprocessing:
+								dependencyProfile.disableDependencyPreprocessing,
+						}}
 						options={{
 							autorun: false,
 							bundlerTimeOut: timeoutMs,
