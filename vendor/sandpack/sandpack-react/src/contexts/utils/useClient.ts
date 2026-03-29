@@ -146,6 +146,7 @@ export const useClient: UseClient = (
   const prevEnvironment = useRef(filesState.environment);
   const lastUpdateDebugSignature = useRef<string | null>(null);
   const runSandpackPromise = useRef<Promise<void> | null>(null);
+  const queuedRunSandpackClientIds = useRef<Set<string>>(new Set());
 
   const asyncSandpackId = useAsyncSandpackId(filesState.files);
   const sandboxSummary = useMemo(
@@ -182,6 +183,30 @@ export const useClient: UseClient = (
           : activeGlobalClientId.current ?? "unknown",
     });
   }, []);
+  const queueRunSandpack = useCallback(
+    (clientId: string, payload: Record<string, unknown>) => {
+      if (runSandpackPromise.current === null) {
+        return;
+      }
+
+      const queuedClientIds = queuedRunSandpackClientIds.current;
+      const queueSize = queuedClientIds.size;
+
+      queuedClientIds.add(clientId);
+
+      if (queuedClientIds.size === queueSize) {
+        return;
+      }
+
+      emitDebugEvent("react:run:queue-follow-up", {
+        clientId,
+        queuedClientIds: Array.from(queuedClientIds),
+        registeredClientIds: Object.keys(registeredIframes.current),
+        ...payload,
+      });
+    },
+    []
+  );
 
   /**
    * Callbacks
@@ -454,27 +479,46 @@ export const useClient: UseClient = (
     if (runSandpackPromise.current) {
       emitDebugEvent("react:run:reuse-inflight", {
         registeredClientIds: Object.keys(registeredIframes.current),
+        queuedClientIds: Array.from(queuedRunSandpackClientIds.current),
       });
       return runSandpackPromise.current;
     }
 
     const nextRun = (async () => {
-      emitDebugEvent("react:run:start", {
-        registeredClientIds: Object.keys(registeredIframes.current),
-        ...sandboxSummary,
-      });
-      await Promise.all(
-        Object.entries(registeredIframes.current).map(
-          async ([clientId, { iframe, clientPropsOverride = {} }]) => {
-            await createClient(iframe, clientId, clientPropsOverride);
-          }
-        )
-      );
+      let clientIdsToLoad = Object.keys(registeredIframes.current);
 
-      setState((prev) => ({ ...prev, error: null, status: "running" }));
-      emitDebugEvent("react:run:complete", {
-        activeClients: Object.keys(clients.current).length,
-      });
+      do {
+        emitDebugEvent("react:run:start", {
+          registeredClientIds: clientIdsToLoad,
+          ...sandboxSummary,
+        });
+        await Promise.all(
+          clientIdsToLoad.map(async (clientId) => {
+            const registration = registeredIframes.current[clientId];
+
+            if (!registration) {
+              return;
+            }
+
+            const { iframe, clientPropsOverride = {} } = registration;
+            await createClient(iframe, clientId, clientPropsOverride);
+          })
+        );
+
+        setState((prev) => ({ ...prev, error: null, status: "running" }));
+        const queuedClientIds = Array.from(
+          queuedRunSandpackClientIds.current
+        ).filter(
+          (clientId) =>
+            typeof registeredIframes.current[clientId] !== "undefined"
+        );
+        queuedRunSandpackClientIds.current.clear();
+        emitDebugEvent("react:run:complete", {
+          activeClients: Object.keys(clients.current).length,
+          queuedClientIds,
+        });
+        clientIdsToLoad = queuedClientIds;
+      } while (clientIdsToLoad.length > 0);
     })();
 
     runSandpackPromise.current = nextRun;
@@ -565,11 +609,18 @@ export const useClient: UseClient = (
         startRoute: clientPropsOverride?.startRoute ?? options?.startRoute,
       });
 
+      if (state.status !== "running") {
+        queueRunSandpack(clientId, {
+          reason: "register-bundler",
+          status: state.status,
+        });
+      }
+
       if (state.status === "running") {
         await createClient(iframe, clientId, clientPropsOverride);
       }
     },
-    [createClient, options?.startRoute, state.status]
+    [createClient, options?.startRoute, queueRunSandpack, state.status]
   );
 
   const unregisterBundler = useCallback(
