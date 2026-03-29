@@ -17,6 +17,7 @@ import {
 export interface FilesState {
   files: SandpackBundlerFiles;
   environment?: SandboxEnvironment;
+  disableDependencyPreprocessing?: boolean;
   visibleFiles: Array<TemplateFiles<SandpackPredefinedTemplate> | string>;
   activeFile: TemplateFiles<SandpackPredefinedTemplate> | string;
   shouldUpdatePreview: boolean;

@@ -227,6 +227,11 @@ export interface SandpackSetup {
   environment?: SandboxEnvironment;
 
   /**
+   * Only use unpkg for fetching dependencies, skipping the preprocessing step.
+   */
+  disableDependencyPreprocessing?: boolean;
+
+  /**
    * The custom private npm registry setting makes it possible
    * to retrieve npm packages from your own npm registry.
    *
@@ -645,6 +650,7 @@ export interface SandboxTemplate {
   entry?: string;
   main: string;
   environment: SandboxEnvironment;
+  disableDependencyPreprocessing?: boolean;
 }
 
 export type SandpackFiles = Record<string, string | SandpackFile>;

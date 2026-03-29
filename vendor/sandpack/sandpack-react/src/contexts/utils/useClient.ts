@@ -282,6 +282,8 @@ export const useClient: UseClient = (
         {
           files: filesState.files,
           template: filesState.environment,
+          disableDependencyPreprocessing:
+            filesState.disableDependencyPreprocessing,
         },
         {
           externalResources: options.externalResources,
@@ -359,6 +361,7 @@ export const useClient: UseClient = (
     },
     [
       clearTimeoutHook,
+      filesState.disableDependencyPreprocessing,
       filesState.environment,
       filesState.files,
       options.startRoute,

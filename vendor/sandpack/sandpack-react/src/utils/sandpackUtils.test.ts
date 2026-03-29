@@ -84,6 +84,17 @@ describe(getSandpackStateFromProps, () => {
     expect(setup.files["/App.js"].code).toBe("foo");
   });
 
+  test("it preserves disableDependencyPreprocessing from custom setup", () => {
+    const setup = getSandpackStateFromProps({
+      template: "react",
+      customSetup: {
+        disableDependencyPreprocessing: true,
+      },
+    });
+
+    expect(setup.disableDependencyPreprocessing).toBe(true);
+  });
+
   /**
    * activeFile
    */
