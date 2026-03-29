@@ -553,7 +553,6 @@ describe(useClient, () => {
         "client-2",
       ]);
     });
-
     it("keeps the timeout armed when rerunning the same registered client", async () => {
       jest.useFakeTimers();
 
