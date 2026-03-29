@@ -4,12 +4,13 @@
 
 - Safe to interrupt right now: yes. No intentional dev server or browser run should be left running between steps.
 - Current focus: the investigation and follow-up notes are merged to `main`, and the local repo cleanup is finished. The active work now is upstream handoff around the hosted package-pipeline failure for `@mui/types@7.4.12`, not additional local Git hygiene or a newly discovered vendored Sandpack runtime regression.
-- Next exact step: use `z-tests-manual/test-results-7.md` plus `notes/upstream-mui-types-7.4.12.md` to prepare or send the upstream repro/report. The repo itself is already normalized on a single clean `main` checkout.
+- Next exact step: monitor and respond on upstream issue `codesandbox/sandpack#1296` (`https://github.com/codesandbox/sandpack/issues/1296`). If maintainers want a smaller confirmation, reuse the direct `@mui/types@7.4.11` vs `7.4.12` manifest/generator probes before rerunning the heavier fixture.
 
 ## Status
 
 - PRs `#6`, `#7`, `#8`, and `#9` are merged to `main`, so the repo-level source of truth for the timeout-lifecycle fixes, MUI version boundary, `@mui/types@7.4.12` reduction, and the refreshed notes summary is now `origin/main`.
 - Local repo hygiene is complete too: the old `research/*`, `codex/*`, and `graphite-base/*` investigation refs are gone, the temporary worktrees have been pruned, and the repo is back to a single clean `main` checkout.
+
 1. Fixed the package-source mismatch. `pnpm install` under Node 20 repointed all fixture links back to `vendor/sandpack`, and `pnpm check:fixture-links`, `pnpm build:vendor`, and `pnpm build:fixtures` now pass against the vendored tree.
 2. Normalized StrictMode across the repros. The fixtures now default to a non-Strict baseline in both the host app and the iframe sandbox, with `VITE_STRICT_MODE=true` as an explicit stress toggle.
 3. Re-ran the startup-race question in `fixtures/minimal-startup-race-client`. Baseline startup is single-pass and succeeds; StrictMode duplicates initialization work, but the fixture still lands on the expected preview state.
@@ -54,11 +55,12 @@
 42. Those probes reduce the original failure below `@mui/system`: `@mui/types@7.4.11` passes cleanly, while `@mui/types@7.4.12` alone reproduces the same hosted dependency-fetch failure (`message-show-error`, preview `waiting`, preview client `installing-dependencies`). `disableDependencyPreprocessing` does not avoid it.
 43. Published package diffs back that up too. Between the passing `@mui/system@7.3.8` and failing `7.3.9`, the meaningful manifest change is the dependency tree moving from `@mui/types@^7.4.11` to `^7.4.12`; the runtime JS diffs are effectively version-banner updates only. The strongest current root-cause statement is therefore “the hosted CodeSandbox package pipeline cannot currently serve `@mui/types@7.4.12`,” not “MUI introduced a new runtime incompatibility in `7.3.9`.”
 44. The vendored `sandpack-react` changes are still important, but they now read as diagnostics and lifecycle-hardening work around the hosted failure, not as the root cause of the `@mui/types@7.4.12` break itself. The current upstream-facing problem statement should stay centered on the hosted package artifact / generation path.
+45. Filed the upstream report as `codesandbox/sandpack#1296` on March 29, 2026 using `notes/upstream-mui-types-7.4.12.md` as the issue body. The issue captures the live `@mui/types@7.4.11` pass vs `7.4.12` fail split, the `403` manifest miss, and the fallback `500 Cannot read properties of null (reading 'browser')` generator response.
 
 ## Next
 
-1. Use `z-tests-manual/test-results-7.md` as the primary upstream evidence bundle. It contains the browser trace, the `@mui/types@7.4.11` pass vs `7.4.12` fail split, and the direct `https://prod-packager-packages.codesandbox.io/v2/packages/@mui/types/{version}.json` contrast (`200` vs `403`).
-2. Use `notes/upstream-mui-types-7.4.12.md` as the upstream-ready issue draft and mitigation sketch. The real fix is still in the hosted package pipeline, but the note also includes the small MUI manifest rollback diff that would avoid `@mui/types@7.4.12` as a temporary mitigation.
+1. Track `codesandbox/sandpack#1296` and answer any maintainer follow-up with `z-tests-manual/test-results-7.md` as the primary evidence bundle.
+2. If upstream wants a smaller confirmation, rerun only the direct `@mui/types@7.4.11` vs `7.4.12` manifest/generator probes; the wider `@mui/system` matrix is already reduced far enough for the main report.
 3. Keep `fixtures/heavy-timeout-disconnect-repro` as the active hosted-packager repro fixture for any future confirmation runs.
 4. Keep `fixtures/timeout-restart-repro` as the timeout control, but treat it as a mostly-correct reference now: no client-recreation or preview-reset failure is proven there yet if `runSandpack()` gets a realistic timeout budget.
 5. Keep `fixtures/color-kit-plane-api-repro` as the heavy validation fixture, not the active repro. Its current mount/update/remount path looks stable in both baseline and StrictMode after the latest harness dedupes.
