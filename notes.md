@@ -3,11 +3,12 @@
 ## Quick Resume
 
 - Safe to interrupt right now: yes. No intentional dev server or browser run should be left running between steps.
-- Current focus: the browser-side / hosted-packager root cause behind the `@mui/system@7.3.9` failure, now reduced to the minimal failing package `@mui/types@7.4.12` plus the hosted package-artifact / generator failures behind it.
-- Next exact step: prepare the upstream repro/report from `z-tests-manual/test-results-7.md` and `notes/upstream-mui-types-7.4.12.md`, using the `@mui/types@7.4.11` pass vs `7.4.12` fail split and the direct `403` packager URL evidence.
+- Current focus: the investigation itself is merged to `main`; the active work now is upstream handoff plus local repo hygiene around the merged research/codex worktrees. The primary technical conclusion remains that the `@mui/system@7.3.9` break reduces to hosted package-pipeline failures for `@mui/types@7.4.12`, not a newly discovered vendored Sandpack runtime regression.
+- Next exact step: treat `origin/main` as the source of truth, clean up the merged local/remote stack branches after intentionally dealing with any leftover local worktree churn, then prepare or send the upstream repro/report from `z-tests-manual/test-results-7.md` and `notes/upstream-mui-types-7.4.12.md`.
 
 ## Status
 
+- PRs `#6`, `#7`, and `#8` are merged to `main`, so the repo-level source of truth for the timeout-lifecycle fixes, MUI version boundary, and `@mui/types@7.4.12` reduction is now `origin/main`, not the old stacked research/codex branches.
 1. Fixed the package-source mismatch. `pnpm install` under Node 20 repointed all fixture links back to `vendor/sandpack`, and `pnpm check:fixture-links`, `pnpm build:vendor`, and `pnpm build:fixtures` now pass against the vendored tree.
 2. Normalized StrictMode across the repros. The fixtures now default to a non-Strict baseline in both the host app and the iframe sandbox, with `VITE_STRICT_MODE=true` as an explicit stress toggle.
 3. Re-ran the startup-race question in `fixtures/minimal-startup-race-client`. Baseline startup is single-pass and succeeds; StrictMode duplicates initialization work, but the fixture still lands on the expected preview state.
@@ -51,13 +52,16 @@
 41. Added tighter fixture probes around the transitive package boundary: exact `mui-system-v7.3.9`, `mui-types-v7.4.11`, `mui-types-v7.4.12`, a `mui-system-v7.3.9-no-preprocess` control, and `mui-system-v7.3.9` variants that try to pin older internal versions.
 42. Those probes reduce the original failure below `@mui/system`: `@mui/types@7.4.11` passes cleanly, while `@mui/types@7.4.12` alone reproduces the same hosted dependency-fetch failure (`message-show-error`, preview `waiting`, preview client `installing-dependencies`). `disableDependencyPreprocessing` does not avoid it.
 43. Published package diffs back that up too. Between the passing `@mui/system@7.3.8` and failing `7.3.9`, the meaningful manifest change is the dependency tree moving from `@mui/types@^7.4.11` to `^7.4.12`; the runtime JS diffs are effectively version-banner updates only. The strongest current root-cause statement is therefore “the hosted CodeSandbox package pipeline cannot currently serve `@mui/types@7.4.12`,” not “MUI introduced a new runtime incompatibility in `7.3.9`.”
+44. The vendored `sandpack-react` changes are still important, but they now read as diagnostics and lifecycle-hardening work around the hosted failure, not as the root cause of the `@mui/types@7.4.12` break itself. The current upstream-facing problem statement should stay centered on the hosted package artifact / generation path.
 
 ## Next
 
-1. Keep `fixtures/timeout-restart-repro` as the timeout control, but treat it as a mostly-correct reference now: no client-recreation or preview-reset failure is proven there yet if `runSandpack()` gets a realistic timeout budget.
-2. Keep `fixtures/color-kit-plane-api-repro` as the heavy validation fixture, not the active repro. Its current mount/update/remount path looks stable in both baseline and StrictMode after the latest harness dedupes.
-3. Use `fixtures/heavy-timeout-disconnect-repro` as the active timeout/disconnect probe now, but re-run the heavy `30000` case against the patched vendor code outside Cursor before drawing final conclusions. The main question is whether the newly preserved timeout/global-listener lifecycle now restores the expected timeout behavior for same-client reruns.
-4. Use `z-tests-manual/test-results-7.md` as the primary upstream evidence bundle now. It contains the browser trace, the `@mui/types@7.4.11` pass vs `7.4.12` fail split, and the direct `https://prod-packager-packages.codesandbox.io/v2/packages/@mui/types/{version}.json` contrast (`200` vs `403`).
-5. Use `notes/upstream-mui-types-7.4.12.md` as the upstream-ready issue draft and mitigation sketch. The real fix is still in the hosted package pipeline, but the note also includes the small MUI manifest rollback diff that would avoid `@mui/types@7.4.12` as a temporary mitigation.
-6. Only probe `@mui/system@7.3.2` or `7.3.3` later if upstream specifically wants the exact end of the earlier `ModuleNotFoundError` range. That is no longer necessary to explain the hosted `7.3.9` break.
-7. Keep `fixtures/minimal-startup-race-client` as the small control fixture unless new baseline evidence shows a real dropped-update race.
+1. Start new work from fresh `main`, not from `research/strictmode-baseline-and-client-lifecycle` or the merged `codex/*` investigation branches.
+2. Clean up the merged local codex worktrees and stale stack refs after intentionally deciding whether to discard or preserve the leftover local dirtiness in those attached worktrees.
+3. Use `z-tests-manual/test-results-7.md` as the primary upstream evidence bundle. It contains the browser trace, the `@mui/types@7.4.11` pass vs `7.4.12` fail split, and the direct `https://prod-packager-packages.codesandbox.io/v2/packages/@mui/types/{version}.json` contrast (`200` vs `403`).
+4. Use `notes/upstream-mui-types-7.4.12.md` as the upstream-ready issue draft and mitigation sketch. The real fix is still in the hosted package pipeline, but the note also includes the small MUI manifest rollback diff that would avoid `@mui/types@7.4.12` as a temporary mitigation.
+5. Keep `fixtures/timeout-restart-repro` as the timeout control, but treat it as a mostly-correct reference now: no client-recreation or preview-reset failure is proven there yet if `runSandpack()` gets a realistic timeout budget.
+6. Keep `fixtures/color-kit-plane-api-repro` as the heavy validation fixture, not the active repro. Its current mount/update/remount path looks stable in both baseline and StrictMode after the latest harness dedupes.
+7. Keep `fixtures/heavy-timeout-disconnect-repro` as the active hosted-packager repro fixture for any future confirmation runs.
+8. Only probe `@mui/system@7.3.2` or `7.3.3` later if upstream specifically wants the exact end of the earlier `ModuleNotFoundError` range. That is no longer necessary to explain the hosted `7.3.9` / `@mui/types@7.4.12` break.
+9. Keep `fixtures/minimal-startup-race-client` as the small control fixture unless new baseline evidence shows a real dropped-update race.
