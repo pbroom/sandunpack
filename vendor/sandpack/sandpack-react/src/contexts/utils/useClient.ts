@@ -379,6 +379,7 @@ export const useClient: UseClient = (
       });
 
       clients.current[clientId] = client;
+      setState((prev) => ({ ...prev, status: "running" }));
       emitDebugEvent("react:create-client:registered", {
         clientId,
         activeClients: Object.keys(clients.current).length,
@@ -618,9 +619,21 @@ export const useClient: UseClient = (
 
       if (state.status === "running") {
         await createClient(iframe, clientId, clientPropsOverride);
+        return;
+      }
+
+      if ((options?.autorun ?? true) && state.status === "idle") {
+        await runSandpack();
       }
     },
-    [createClient, options?.startRoute, queueRunSandpack, state.status]
+    [
+      createClient,
+      options?.autorun,
+      options?.startRoute,
+      queueRunSandpack,
+      runSandpack,
+      state.status,
+    ]
   );
 
   const unregisterBundler = useCallback(

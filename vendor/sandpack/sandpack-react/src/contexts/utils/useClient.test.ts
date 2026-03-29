@@ -102,9 +102,7 @@ describe(useClient, () => {
       await operations.runSandpack();
     });
 
-    expect(
-      mockedLoadSandpackClient.mock.calls[0]?.[1]
-    ).toEqual(
+    expect(mockedLoadSandpackClient.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({
         disableDependencyPreprocessing: true,
       })
@@ -481,6 +479,47 @@ describe(useClient, () => {
       expect(Object.keys(operations.clients)).toHaveLength(1);
       expect(operations.clients["client-1"]).toBe(undefined);
       expect(operations.clients["client-2"]).toBeDefined();
+    });
+
+    it("restarts sandpack when a new bundler registers after the last client unmounts", async () => {
+      mockedLoadSandpackClient.mockImplementation(async (iframeSelector) => {
+        return createMockClient(iframeSelector as HTMLIFrameElement);
+      });
+
+      const { result } = renderHook(() =>
+        useClient({}, getSandpackStateFromProps({}))
+      );
+      const operations = result.current[1];
+
+      await act(async () => {
+        await operations.registerBundler(
+          document.createElement("iframe"),
+          "client-1"
+        );
+        await operations.runSandpack();
+      });
+
+      expect(result.current[0].status).toBe("running");
+      expect(operations.clients["client-1"]).toBeDefined();
+
+      act(() => {
+        operations.unregisterBundler("client-1");
+      });
+
+      expect(result.current[0].status).toBe("idle");
+      expect(operations.clients["client-1"]).toBe(undefined);
+
+      const restartedOperations = result.current[1];
+      await act(async () => {
+        await restartedOperations.registerBundler(
+          document.createElement("iframe"),
+          "client-2"
+        );
+      });
+
+      expect(result.current[0].status).toBe("running");
+      expect(Object.keys(restartedOperations.clients)).toEqual(["client-2"]);
+      expect(mockedLoadSandpackClient).toHaveBeenCalledTimes(2);
     });
 
     it("does not initialize the same client twice while a run is already in flight", async () => {
