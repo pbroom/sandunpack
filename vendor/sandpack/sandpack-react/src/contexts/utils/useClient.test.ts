@@ -500,6 +500,60 @@ describe(useClient, () => {
       expect(Object.keys(operations.clients)).toEqual(["client-1"]);
     });
 
+    it("queues a follow-up run for bundlers that register during an in-flight run", async () => {
+      const { result } = renderHook(() =>
+        useClient({}, getSandpackStateFromProps({}))
+      );
+      const operations = result.current[1];
+
+      let releaseFirstLoad!: () => void;
+      const firstLoadBlocked = new Promise<void>((resolve) => {
+        releaseFirstLoad = resolve;
+      });
+      mockedLoadSandpackClient.mockImplementation(async (...args) => {
+        if (mockedLoadSandpackClient.mock.calls.length === 1) {
+          await firstLoadBlocked;
+        }
+
+        return actualSandpackClient.loadSandpackClient(...args);
+      });
+
+      await act(async () => {
+        await operations.registerBundler(
+          document.createElement("iframe"),
+          "client-1"
+        );
+      });
+
+      let firstRun!: Promise<void>;
+      let secondRun!: Promise<void>;
+      await act(async () => {
+        firstRun = operations.runSandpack();
+        await Promise.resolve();
+
+        await operations.registerBundler(
+          document.createElement("iframe"),
+          "client-2"
+        );
+        secondRun = operations.runSandpack();
+        await Promise.resolve();
+      });
+
+      expect(mockedLoadSandpackClient).toHaveBeenCalledTimes(1);
+
+      releaseFirstLoad();
+
+      await act(async () => {
+        await Promise.all([firstRun, secondRun]);
+      });
+
+      expect(mockedLoadSandpackClient).toHaveBeenCalledTimes(2);
+      expect(Object.keys(operations.clients).sort()).toEqual([
+        "client-1",
+        "client-2",
+      ]);
+    });
+
     it("keeps the timeout armed when rerunning the same registered client", async () => {
       jest.useFakeTimers();
 
