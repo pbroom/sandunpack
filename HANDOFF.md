@@ -29,10 +29,35 @@ The best next step is to keep using this `sandunpack` workspace to validate targ
 
 - The workspace and planned repro fixtures already exist under `fixtures/`.
 - `minimal-startup-race-react` was fixed and merged as a fixture/harness bug, not as a proven Sandpack-core patch.
-- That merged harness fix stabilized `SandpackProvider` props, deduped debug-log rerenders, corrected the template update path from `'/src/App.tsx'` to `'/App.tsx'`, stabilized delayed update scheduling, and removed `React.StrictMode` from the React wrapper fixture.
+- That merged harness fix stabilized `SandpackProvider` props, deduped debug-log rerenders, corrected the template update path from `'/src/App.tsx'` to `'/App.tsx'`, stabilized delayed update scheduling, and removed `React.StrictMode` from the React wrapper fixture. The current workspace also normalizes StrictMode across the remaining repros with a shared `VITE_STRICT_MODE` toggle, so baseline runs stay non-Strict in both the host app and the iframe sandbox unless double-mount behavior is the explicit thing under test.
 - No vendored `Sandpack` patch has been proven by that merged change yet.
-- The current workspace install resolves fixture links into `vendor/sandpack`, and `pnpm check:fixture-links` now enforces that expectation before fixture `dev`, `build`, `check`, and `start:all`.
-- The next highest-value investigations are `minimal-startup-race-client` and `timeout-restart-repro`, now that fixture/source-tree drift fails loudly instead of silently reusing an old sibling checkout.
+- A fresh `pnpm install` under Node 20 repaired stale fixture links that had drifted back to the sibling `sandpack/` checkout. The current workspace install resolves fixture links into `vendor/sandpack`, and `pnpm check:fixture-links`, `pnpm build:vendor`, and `pnpm build:fixtures` all pass against the vendored tree.
+- `minimal-startup-race-client` now behaves like a clean control fixture: baseline startup is single-pass and succeeds, while `VITE_STRICT_MODE=true` duplicates initialization work but still lands on the expected preview state.
+- `timeout-restart-repro` still reproduces its failure in the non-Strict baseline: startup is single-pass, then times out.
+- `vendor/sandpack/sandpack-react/src/contexts/utils/useClient.ts` had a real registration-lifetime bug: unmounting a live preview could leave a stale iframe registration behind, and the next `runSandpack()` would recreate that unmounted client. There is now a focused regression test for that case and a fix that separates timeout cleanup from actual preview unmount cleanup.
+- `vendor/sandpack/sandpack-react/src/contexts/utils/useClient.ts` also now guards in-flight `runSandpack()` calls, with a focused regression test proving the same registered client is not initialized twice while a run is already in progress.
+- After the registration-lifetime fix plus the in-flight `runSandpack()` guard, a strict-mode browser spot-check no longer shows duplicate client initialization in the `sandpack-react` fixtures.
+- `timeout-restart-repro` now exposes preview diagnostics too: preview client id, preview client status, preview URL, iframe `src`, last `urlchange`, and last probe source.
+- Those diagnostics show that timeout cleanup clears the live preview URL and iframe `src` back to `none`, while the last `urlchange` remains visible in the log history.
+- In the small timeout repro, `runSandpack()` reuses the same preview client id and registration, while a full remount creates a fresh client id and fresh preview state. No broken preview reset or reconnect path is proven there yet.
+- `color-kit-plane-api-repro` was re-checked as the heavier consumer harness after switching it to guarded manual autorun behavior. In both baseline and `VITE_STRICT_MODE=true`, the browser log now shows one `runSandpack()` on mount, one `updateFile` per click, and a clean unregister/register cycle on remount.
+- In that compact heavy fixture, `Remount preview` intentionally reapplies the current hue state after remount instead of resetting to the blank default, so that behavior should not be treated as proof of stale preview state by itself.
+- Those `color-kit` browser spot-checks were still limited by the hosted bundler sitting in `waiting`, so they clear the local duplicate-lifecycle suspicion without proving that all end-to-end preview connectivity risk is gone.
+- `heavy-timeout-disconnect-repro` now exists as the active heavy timeout/disconnect probe. It combines a `color-kit`-style hidden file graph, heavy external dependencies, guarded manual `runSandpack()`, rerun/remount controls, and preview diagnostics that now keep client id/status aligned with the Sandpack debug lifecycle events.
+- First browser smoke on that new heavy timeout fixture is more interesting than the small timeout control: after remount, `react:register-bundler` can reach a fresh client in `idle` while the visible preview still sits at `waiting` with no preview URL or iframe `src`.
+- Timeout-budget matrix results in that heavy fixture are now split three ways: at `4000`, manual `runSandpack()` reliably times out during dependency installation; at `12000`, remount lands in `running` with client `idle`, dispatch refresh/restart are ignored with `clientIds: []`, and only manual `runSandpack()` starts the client; at `30000`, manual `runSandpack()` registers a `30000` timeout but the client can sit in `installing-dependencies` for 43s+ without the timeout ever firing.
+- `vendor/sandpack/sandpack-react/src/contexts/utils/useClient.ts` now emits `react:timeout:clear` for the runtime-message paths too (`message-done`, `message-connected`, `message-show-error`), and nulls the timeout hook on clear/fire so the next heavy `30000` run can distinguish early clear vs never-fired timer more directly.
+- `heavy-timeout-disconnect-repro` now persists `Last show-error` and `Last notification` in the metrics panel too, and the vendored timeout-clear payload now carries the active global client id plus `show-error` metadata (`title`, `path`, `message`). The next external `30000` run should therefore identify exactly which runtime error cleared the timer and which client owned that clear.
+- `heavy-timeout-disconnect-repro` now also derives a dedicated `Timeout-clearing error` metric from the exact `react:timeout:clear` payload, stamped with the same timestamp as `Last timeout clear`, so later `show-error` / `notification` events can no longer obscure the specific error that canceled the timer.
+- A focused vendor regression test now confirms a likely root cause for part of that heavy-fixture behavior: rerunning the same registered client could lose the provider-global timeout and message-listener lifecycle. `useClient.ts` now tracks the active global client so same-client reruns re-arm the timeout and rebind the global listener, and the focused `useClient.test.ts` file passes with that patch.
+- An external `30000` run now confirms the clear cause too: the active global client arms the timeout, then clears it roughly 6-7 seconds later via `message-show-error` with `Could not fetch dependencies, please try again in a couple seconds:`. That means the remaining bug is no longer timeout registration; it is that `sandpack.error` could still end up back at `none` while provider status remained `running`.
+- `vendor/sandpack/sandpack-react/src/contexts/utils/useClient.ts` now preserves the last runtime error across retry `start` messages and only clears it on an actual recovery signal (`connected` or successful `done`). A new focused `useClient.test.ts` regression covers the `show-error -> start -> connected` sequence so dependency-fetch failures should stay surfaced in the UI until the client genuinely recovers.
+- `heavy-timeout-disconnect-repro` now also supports selectable dependency profiles in the UI: `core-only`, `date-fns`, `framer-motion`, `emotion-bundle`, `mui-bundle`, and `full`. Changing the selector remounts the sandbox against the chosen dependency bundle without changing the dev command, and the generated preview app now prints the active profile so shared results remain attributable.
+- The current profile matrix already narrows the failure boundary: `core-only`, `date-fns`, `framer-motion`, and `emotion-bundle` all succeed quickly and clear via `message-done`, while `mui-bundle` and `full` both fail with the same early dependency-fetch `message-show-error`. That means Emotion alone is not the trigger; the current failure boundary is the point where `@mui/material` joins the bundle. The raw manual results now live in `z-tests-manual/test-results-1.md` and `z-tests-manual/test-results-2.md`.
+- `heavy-timeout-disconnect-repro` now also includes `mui-system-bundle` and `mui-bundle-v5`. `mui-system-bundle` explicitly exercises `@mui/system` on top of Emotion, while `mui-bundle-v5` pins `@mui/material` to the current `latest-v5` line (`5.18.0`) instead of `latest` (`7.3.9`).
+- The third manual comparison narrows the boundary further: `mui-system-bundle` fails with the same early dependency-fetch `message-show-error` as `mui-bundle`, while `mui-bundle-v5` passes cleanly. That means `@mui/material` is not required to reproduce the problem and the failure is unlikely to be raw dependency count; the issue now looks tied to the newer MUI shared core line.
+- `heavy-timeout-disconnect-repro` now also includes `mui-system-v6`, pinned to `@mui/system@6.5.0`, and the next manual comparison confirmed that it passes cleanly. That means the current best hypothesis is a 7.x-specific issue in the shared MUI core line: `@mui/system@6.5.0` passes, while `@mui/system@latest` (`7.3.9`) fails.
+- The next highest-value investigation is now to rerun the heavy `30000` case against the pinned `mui-system-v7.0` profile (`@mui/system@7.0.0`). If `7.0.0` also fails, the break likely spans the whole 7.x line; if it passes, the regression probably lands later within 7.x. Keep `minimal-startup-race-client` as the small control fixture, `timeout-restart-repro` as the timeout control, and `color-kit-plane-api-repro` as the heavy validation fixture.
 
 ## Recommended Project Shape
 
@@ -55,6 +80,7 @@ sandunpack/
     minimal-startup-race-client/
     timeout-restart-repro/
     color-kit-plane-api-repro/
+    heavy-timeout-disconnect-repro/
   notes/
   scripts/
   vendor/
@@ -75,7 +101,7 @@ Why this shape:
 - do not use bare `yarn` in `vendor/sandpack`; use the wrapper script and Yarn classic `1.22.19`
 - build `sandpack-client`, `sandpack-react`, and `sandpack-themes` before using the fixtures
 - use `pnpm check:fixtures` and `pnpm build:fixtures` for repo-wide validation; `pnpm turbo ...` is not applicable here
-- run `pnpm check:fixture-links` after installs or dependency churn; it compares fixture manifest targets, installed symlink targets, and canonical realpaths, and fails if anything resolves outside `vendor/sandpack`
+- run `pnpm check:fixture-links` after installs or dependency churn; it compares fixture manifest targets, installed symlink targets, and canonical realpaths, and fails if anything resolves outside `vendor/sandpack`. In this workspace, a plain `pnpm install` under Node 20 repaired stale fixture symlinks that had drifted back to the sibling `sandpack/` checkout.
 - fixture `dev`, `build`, and `check` scripts now run that link verifier automatically, and `pnpm start:all` does the same before building or launching fixtures
 
 ## What We Learned In `color-kit`
@@ -389,7 +415,12 @@ Status:
 
 - both versions already exist: `minimal-startup-race-react` and `minimal-startup-race-client`
 - the React wrapper fixture was fixed and merged as a harness issue; treat it as a cleaned baseline, not proof of a Sandpack-core startup/update bug
-- the low-level client fixture is the better next place to prove or disprove a real initialization/update race
+- the low-level client fixture was the right place to re-run the startup-race question after the React harness cleanup
+- current result: baseline startup is single-pass and succeeds in `minimal-startup-race-client`
+- current result: `VITE_STRICT_MODE=true` duplicates initialization work in `minimal-startup-race-client`, but does not currently produce a stale preview or dropped update
+- there is now a vendor-side regression test proving that unmounted preview registrations must be dropped before a later `runSandpack()`
+- there is now a vendor-side regression test proving that overlapping `runSandpack()` calls must not initialize the same registered client twice
+- current result: after the `runSandpack()` in-flight guard, strict-mode browser startup no longer shows duplicate client initialization in the `sandpack-react` fixtures
 
 Shape:
 
@@ -398,6 +429,7 @@ Shape:
 - update to real code shortly after initialization
 - compare editor state vs preview state
 - keep `React.StrictMode` off unless double-mount behavior is the explicit thing under test
+- use `VITE_STRICT_MODE=true` when intentionally testing that double-mount path; the repro fixtures now wire that toggle through both the host mount and the iframe entrypoint
 
 Maintain both forms:
 
@@ -410,17 +442,41 @@ Purpose:
 
 - reproduce timeout plus bad recovery behavior
 
+Status:
+
+- the non-Strict baseline already reproduces the timeout path with single-pass startup work
+- the non-Strict baseline remains the best control for timeout work
+- treat StrictMode as a stress variant here, not as the baseline control
+- after timeout, dispatch-based `refresh` and `shell/restart` are skipped because the provider is no longer `running`
+- `sandpack.runSandpack()` and a full remount both recreate clients after timeout; if the timeout budget is increased, both recovery paths succeed in the small repro
+- this matches vendored UI behavior: the built-in timeout `LoadingOverlay` uses `runSandpack()` for `Try again`, and the normal Preview refresh button is only shown while status is `running`
+- no timeout cleanup or client-recreation bug is proven yet in the small repro when the rerun path gets a realistic timeout budget
+- the recent `runSandpack()` in-flight guard removed the browser-visible same-client duplicate initialization that strict mode was surfacing in the `sandpack-react` fixtures
+- preview diagnostics confirm that timeout cleanup clears the live preview URL and iframe `src`, so seeing `none` there after timeout is expected in this small repro
+- `runSandpack()` keeps the same preview client id, while `Remount sandbox` creates a fresh one; both paths look consistent with the current vendored cleanup logic
+- because this fixture now looks mostly correct, it should be treated as a control for timeout lifecycle checks rather than proof of a remaining Sandpack reconnect bug by itself
+
 Shape:
 
 - intentionally heavy or slow-to-evaluate example
 - explicit restart button
 - instrumentation around timeout registration, client recreation, and preview reload
+- prioritize preview reset, reconnect behavior, and preview URL state over generic "can any new client be created?" checks, since the basic rerun/remount path already works here
+- the current timeout fixture does not enable Sandpack's experimental service-worker mode, so service-worker lifecycle is probably not part of this specific small repro
 
 ### Fixture C: `color-kit`-style heavy repro
 
 Purpose:
 
 - validate whether a fix survives a real consumer case
+
+Status:
+
+- the compact `color-kit-plane-api-repro` fixture no longer reproduces a clear lifecycle bug after the latest harness dedupes
+- baseline and `VITE_STRICT_MODE=true` both now show single mount/update/remount events in browser logs
+- the fixture currently behaves more like a heavy validation harness than an active bug repro
+- `Remount preview` replays the current state after remount; that is current fixture behavior, not by itself evidence of a stale-preview failure
+- hosted-bundler availability can still leave the preview stuck at `waiting`, so treat this fixture as evidence about local lifecycle ordering first and full end-to-end connectivity second
 
 Shape:
 
@@ -436,6 +492,33 @@ Important:
 
 - do not try to clone the entire `color-kit` repo into `sandunpack`
 - make a compact fixture that captures the failure mode, not the whole product
+
+### Fixture D: heavy timeout / disconnect repro
+
+Purpose:
+
+- create a heavier active probe for timeout, idle, and reconnect behavior without turning `color-kit-plane-api-repro` back into the primary bug repro
+
+Status:
+
+- `heavy-timeout-disconnect-repro` combines the compact `color-kit` file-graph style with heavy external dependencies, guarded manual `runSandpack()`, rerun/remount controls, and live preview diagnostics
+- the current harness size is 84 virtual files plus several external packages
+- first browser smoke already shows a fresh `react:register-bundler` event reaching client status `idle` after remount while the preview label can remain `waiting` and preview URL / iframe `src` can remain `none`
+- the diagnostics are now trustworthy enough to compare UI client id/status with lifecycle logs after rerun, remount, and manual probe
+- timeout-budget matrix findings are now specific enough to guide patching:
+  - `4000`: manual `runSandpack()` starts dependency installation and then times out as expected
+  - `12000`: remount leaves the client `idle`; dispatch refresh/restart do nothing with `clientIds: []`; manual `runSandpack()` starts the client and populates iframe `src`
+  - `30000`: remount still leaves the client `idle`; manual `runSandpack()` registers the timeout but can remain in `installing-dependencies` for 43s+ without a timeout event
+- the vendored timeout debug stream is now more specific too: it reports timeout clears from runtime-message paths, which should make the next heavy `30000` comparison much more conclusive
+- there is now also a focused `useClient` regression test for rerunning the same registered client under a timeout budget, and the current patch keeps the timeout armed in that rerun path instead of silently dropping the provider-global timeout/listener lifecycle
+- because hosted-bundler availability is still external, use this fixture to separate local lifecycle state from upstream service availability in larger sandboxes
+
+Shape:
+
+- keep the `color-kit`-style hidden file graph and import rewriting
+- keep explicit `runSandpack()`, refresh/restart, and remount controls
+- expose preview client id, client status, preview URL, iframe `src`, last `urlchange`, and last probe
+- use timeout-budget comparisons and retry-path differences first; only add more stressors if this fixture stops differentiating from generic hosted-bundler waiting
 
 ## Phase 3: instrument before patching
 

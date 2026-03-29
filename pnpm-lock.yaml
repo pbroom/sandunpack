@@ -46,6 +46,40 @@ importers:
         specifier: ^7.1.3
         version: 7.3.1(@types/node@25.5.0)
 
+  fixtures/heavy-timeout-disconnect-repro:
+    dependencies:
+      '@codesandbox/sandpack-client':
+        specifier: link:../../vendor/sandpack/sandpack-client
+        version: link:../../vendor/sandpack/sandpack-client
+      '@codesandbox/sandpack-react':
+        specifier: link:../../vendor/sandpack/sandpack-react
+        version: link:../../vendor/sandpack/sandpack-react
+      '@codesandbox/sandpack-themes':
+        specifier: link:../../vendor/sandpack/sandpack-themes
+        version: link:../../vendor/sandpack/sandpack-themes
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.2.0
+        version: 18.3.1(react@18.3.1)
+    devDependencies:
+      '@types/react':
+        specifier: ^18.2.79
+        version: 18.3.28
+      '@types/react-dom':
+        specifier: ^18.2.25
+        version: 18.3.7(@types/react@18.3.28)
+      '@vitejs/plugin-react':
+        specifier: ^5.0.0
+        version: 5.2.0(vite@7.3.1(@types/node@25.5.0))
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vite:
+        specifier: ^7.1.3
+        version: 7.3.1(@types/node@25.5.0)
+
   fixtures/minimal-startup-race-client:
     dependencies:
       '@codesandbox/sandpack-client':

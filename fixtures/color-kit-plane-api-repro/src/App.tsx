@@ -1,85 +1,87 @@
 // @ts-nocheck
-import type { SandpackMessage } from '@codesandbox/sandpack-client';
+import type {SandpackMessage} from '@codesandbox/sandpack-client';
 import {
-  SandpackCodeEditor,
-  SandpackLayout,
-  SandpackPreview,
-  SandpackProvider,
-  useSandpack,
+	SandpackCodeEditor,
+	SandpackLayout,
+	SandpackPreview,
+	SandpackProvider,
+	useSandpack,
 } from '@codesandbox/sandpack-react';
-import { sandpackDark } from '@codesandbox/sandpack-themes';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {sandpackDark} from '@codesandbox/sandpack-themes';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 
 const PREVIEW_SOURCE = 'color-kit-plane-api-repro-preview';
 const BLANK_HUE = 210;
 const HUE_SEQUENCE = [210, 240, 280, 320, 20];
 const RAW_IMPORT_PATTERN = /(['"])@color-kit\/core\1/;
 const REWRITTEN_IMPORT = "'./color-kit-core/index.ts'";
+const STRICT_MODE_ENABLED = import.meta.env.VITE_STRICT_MODE === 'true';
+const DEBUG_EVENT_LOGS_ENABLED = import.meta.env.VITE_SANDPACK_DEBUG === 'true';
 
 interface LogEntry {
-  id: number;
-  source: string;
-  detail: string;
-  at: string;
+	id: number;
+	source: string;
+	detail: string;
+	at: string;
 }
 
 interface HeavyControllerProps {
-  updateNonce: number;
-  targetHue: number;
-  onStatus: (status: string) => void;
-  onExpectedLabel: (label: string) => void;
-  onLog: (source: string, detail: string) => void;
+	updateNonce: number;
+	targetHue: number;
+	onStatus: (status: string) => void;
+	onExpectedLabel: (label: string) => void;
+	onLog: (source: string, detail: string) => void;
 }
 
 function buildCoreFiles() {
-  const files: Record<string, { code: string; hidden: true }> = {
-    '/color-kit-core/index.ts': {
-      code: "export { buildPlaneModel } from './plane/buildPlaneModel.ts';\nexport { describePlane } from './plane/describePlane.ts';\n",
-      hidden: true,
-    },
-    '/color-kit-core/plane/buildPlaneModel.ts': {
-      code: "import { clamp } from '../shared/clamp.ts';\nimport { hueToRgb } from '../shared/hueToRgb.ts';\nimport { createStops } from './createStops.ts';\n\nexport function buildPlaneModel(hue: number) {\n  const safeHue = clamp(hue, 0, 360);\n  return {\n    hue: safeHue,\n    rgb: hueToRgb(safeHue),\n    stops: createStops(safeHue),\n  };\n}\n",
-      hidden: true,
-    },
-    '/color-kit-core/plane/describePlane.ts': {
-      code: "import { formatRgb } from '../shared/formatRgb.ts';\n\nexport function describePlane(hue: number, rgb: [number, number, number]) {\n  return `hue ${hue} -> ${formatRgb(rgb)}`;\n}\n",
-      hidden: true,
-    },
-    '/color-kit-core/plane/createStops.ts': {
-      code: "import { round } from '../shared/round.ts';\n\nexport function createStops(hue: number) {\n  return Array.from({ length: 8 }, (_, index) => ({\n    label: `stop-${index + 1}`,\n    value: round((hue + index * 12) % 360),\n  }));\n}\n",
-      hidden: true,
-    },
-    '/color-kit-core/shared/clamp.ts': {
-      code: "export function clamp(value: number, min: number, max: number) {\n  return Math.min(max, Math.max(min, value));\n}\n",
-      hidden: true,
-    },
-    '/color-kit-core/shared/round.ts': {
-      code: "export function round(value: number) {\n  return Math.round(value * 100) / 100;\n}\n",
-      hidden: true,
-    },
-    '/color-kit-core/shared/formatRgb.ts': {
-      code: "export function formatRgb(rgb: [number, number, number]) {\n  return rgb.map((value) => value.toFixed(0).padStart(3, ' ')).join(', ');\n}\n",
-      hidden: true,
-    },
-    '/color-kit-core/shared/hueToRgb.ts': {
-      code: "import { clamp } from './clamp.ts';\n\nfunction channel(offset: number, hue: number) {\n  const value = Math.sin(((hue + offset) / 360) * Math.PI * 2) * 127 + 128;\n  return clamp(Math.round(value), 0, 255);\n}\n\nexport function hueToRgb(hue: number): [number, number, number] {\n  return [channel(0, hue), channel(120, hue), channel(240, hue)];\n}\n",
-      hidden: true,
-    },
-    '/color-kit-core/analysis/contrast.ts': {
-      code: "export function estimateContrast(hue: number) {\n  return hue > 180 ? 'dark-text' : 'light-text';\n}\n",
-      hidden: true,
-    },
-    '/color-kit-core/analysis/ticks.ts': {
-      code: "export const axisTicks = Array.from({ length: 6 }, (_, index) => index * 20);\n",
-      hidden: true,
-    },
-  };
+	const files: Record<string, {code: string; hidden: true}> = {
+		'/color-kit-core/index.ts': {
+			code: "export { buildPlaneModel } from './plane/buildPlaneModel.ts';\nexport { describePlane } from './plane/describePlane.ts';\n",
+			hidden: true,
+		},
+		'/color-kit-core/plane/buildPlaneModel.ts': {
+			code: "import { clamp } from '../shared/clamp.ts';\nimport { hueToRgb } from '../shared/hueToRgb.ts';\nimport { createStops } from './createStops.ts';\n\nexport function buildPlaneModel(hue: number) {\n  const safeHue = clamp(hue, 0, 360);\n  return {\n    hue: safeHue,\n    rgb: hueToRgb(safeHue),\n    stops: createStops(safeHue),\n  };\n}\n",
+			hidden: true,
+		},
+		'/color-kit-core/plane/describePlane.ts': {
+			code: "import { formatRgb } from '../shared/formatRgb.ts';\n\nexport function describePlane(hue: number, rgb: [number, number, number]) {\n  return `hue ${hue} -> ${formatRgb(rgb)}`;\n}\n",
+			hidden: true,
+		},
+		'/color-kit-core/plane/createStops.ts': {
+			code: "import { round } from '../shared/round.ts';\n\nexport function createStops(hue: number) {\n  return Array.from({ length: 8 }, (_, index) => ({\n    label: `stop-${index + 1}`,\n    value: round((hue + index * 12) % 360),\n  }));\n}\n",
+			hidden: true,
+		},
+		'/color-kit-core/shared/clamp.ts': {
+			code: 'export function clamp(value: number, min: number, max: number) {\n  return Math.min(max, Math.max(min, value));\n}\n',
+			hidden: true,
+		},
+		'/color-kit-core/shared/round.ts': {
+			code: 'export function round(value: number) {\n  return Math.round(value * 100) / 100;\n}\n',
+			hidden: true,
+		},
+		'/color-kit-core/shared/formatRgb.ts': {
+			code: "export function formatRgb(rgb: [number, number, number]) {\n  return rgb.map((value) => value.toFixed(0).padStart(3, ' ')).join(', ');\n}\n",
+			hidden: true,
+		},
+		'/color-kit-core/shared/hueToRgb.ts': {
+			code: "import { clamp } from './clamp.ts';\n\nfunction channel(offset: number, hue: number) {\n  const value = Math.sin(((hue + offset) / 360) * Math.PI * 2) * 127 + 128;\n  return clamp(Math.round(value), 0, 255);\n}\n\nexport function hueToRgb(hue: number): [number, number, number] {\n  return [channel(0, hue), channel(120, hue), channel(240, hue)];\n}\n",
+			hidden: true,
+		},
+		'/color-kit-core/analysis/contrast.ts': {
+			code: "export function estimateContrast(hue: number) {\n  return hue > 180 ? 'dark-text' : 'light-text';\n}\n",
+			hidden: true,
+		},
+		'/color-kit-core/analysis/ticks.ts': {
+			code: 'export const axisTicks = Array.from({ length: 6 }, (_, index) => index * 20);\n',
+			hidden: true,
+		},
+	};
 
-  return files;
+	return files;
 }
 
 function buildRawAppSource(hue: number): string {
-  return `import { useEffect } from "react";
+	return `import { useEffect } from "react";
 import { describePlane, buildPlaneModel } from "@color-kit/core";
 
 const hue = ${hue};
@@ -125,249 +127,330 @@ export default function App() {
 `;
 }
 
-function toSandpackSource(source: string): string {
-  if (!RAW_IMPORT_PATTERN.test(source)) {
-    throw new Error('expected an @color-kit/core import in the heavy fixture');
-  }
+function buildSandboxEntryCode(): string {
+	const reactImport = STRICT_MODE_ENABLED
+		? 'import React, { StrictMode } from "react";\n'
+		: 'import React from "react";\n';
+	const renderApp = STRICT_MODE_ENABLED
+		? `root.render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+);`
+		: 'root.render(<App />);';
 
-  return source.replace(RAW_IMPORT_PATTERN, REWRITTEN_IMPORT);
+	return `${reactImport}import { createRoot } from "react-dom/client";
+import "./styles.css";
+
+import App from "./App";
+
+const root = createRoot(document.getElementById("root")!);
+${renderApp}
+`;
+}
+
+function toSandpackSource(source: string): string {
+	if (!RAW_IMPORT_PATTERN.test(source)) {
+		throw new Error('expected an @color-kit/core import in the heavy fixture');
+	}
+
+	return source.replace(RAW_IMPORT_PATTERN, REWRITTEN_IMPORT);
 }
 
 function summarizeMessage(message: SandpackMessage): string {
-  if (message.type === 'action') {
-    return `${message.type}:${message.action}`;
-  }
+	if (message.type === 'action') {
+		return `${message.type}:${message.action}`;
+	}
 
-  if (message.type === 'state') {
-    return `${message.type}:${message.state.entry}`;
-  }
+	if (message.type === 'state') {
+		return `${message.type}:${message.state.entry}`;
+	}
 
-  return message.type;
+	return message.type;
 }
 
-function SandpackAutoRun({ onLog }: { onLog: (source: string, detail: string) => void }) {
-  const { sandpack } = useSandpack();
+function SandpackAutoRun({
+	onLog,
+}: {
+	onLog: (source: string, detail: string) => void;
+}) {
+	const {sandpack} = useSandpack();
+	const didRunOnMount = useRef(false);
+	const runSandpackRef = useRef(sandpack.runSandpack);
 
-  useEffect(() => {
-    onLog('host', 'runSandpack() on mount');
-    void sandpack.runSandpack();
-  }, [onLog, sandpack]);
+	useEffect(() => {
+		runSandpackRef.current = sandpack.runSandpack;
+	}, [sandpack.runSandpack]);
 
-  return null;
+	useEffect(() => {
+		if (didRunOnMount.current) {
+			return;
+		}
+
+		didRunOnMount.current = true;
+		onLog('host', 'runSandpack() on mount');
+		void runSandpackRef.current();
+	}, [onLog]);
+
+	return null;
 }
 
-function HeavyController({ updateNonce, targetHue, onStatus, onExpectedLabel, onLog }: HeavyControllerProps) {
-  const { sandpack, listen } = useSandpack();
+function HeavyController({
+	updateNonce,
+	targetHue,
+	onStatus,
+	onExpectedLabel,
+	onLog,
+}: HeavyControllerProps) {
+	const {sandpack, listen} = useSandpack();
+	const lastAppliedUpdateNonce = useRef(0);
+	const updateFileRef = useRef(sandpack.updateFile);
 
-  useEffect(() => {
-    onStatus(sandpack.status);
-  }, [onStatus, sandpack.status]);
+	useEffect(() => {
+		updateFileRef.current = sandpack.updateFile;
+	}, [sandpack.updateFile]);
 
-  useEffect(() => {
-    return listen((message) => {
-      onLog('listen', summarizeMessage(message));
-    });
-  }, [listen, onLog]);
+	useEffect(() => {
+		onStatus(sandpack.status);
+	}, [onStatus, sandpack.status]);
 
-  useEffect(() => {
-    if (updateNonce === 0) {
-      return;
-    }
+	useEffect(() => {
+		if (!DEBUG_EVENT_LOGS_ENABLED) {
+			return;
+		}
 
-    const label = `hue-${targetHue}`;
-    onExpectedLabel(label);
-    onLog('updateFile', label);
-    sandpack.updateFile('/App.tsx', toSandpackSource(buildRawAppSource(targetHue)));
-  }, [onExpectedLabel, onLog, targetHue, sandpack, updateNonce]);
+		return listen((message) => {
+			onLog('listen', summarizeMessage(message));
+		});
+	}, [listen, onLog]);
 
-  return null;
+	useEffect(() => {
+		if (updateNonce === 0 || lastAppliedUpdateNonce.current === updateNonce) {
+			return;
+		}
+
+		lastAppliedUpdateNonce.current = updateNonce;
+		const label = `hue-${targetHue}`;
+		onExpectedLabel(label);
+		onLog('updateFile', label);
+		updateFileRef.current(
+			'/App.tsx',
+			toSandpackSource(buildRawAppSource(targetHue)),
+		);
+	}, [onExpectedLabel, onLog, targetHue, updateNonce]);
+
+	return null;
 }
 
 export default function App() {
-  const [refreshNonce, setRefreshNonce] = useState(0);
-  const [updateNonce, setUpdateNonce] = useState(0);
-  const [hueIndex, setHueIndex] = useState(0);
-  const [previewLabel, setPreviewLabel] = useState('waiting');
-  const [expectedLabel, setExpectedLabel] = useState(`hue-${BLANK_HUE}`);
-  const [status, setStatus] = useState('initial');
-  const [logs, setLogs] = useState<LogEntry[]>([]);
+	const [refreshNonce, setRefreshNonce] = useState(0);
+	const [updateNonce, setUpdateNonce] = useState(0);
+	const [hueIndex, setHueIndex] = useState(0);
+	const [previewLabel, setPreviewLabel] = useState('waiting');
+	const [expectedLabel, setExpectedLabel] = useState(`hue-${BLANK_HUE}`);
+	const [status, setStatus] = useState('initial');
+	const [logs, setLogs] = useState<LogEntry[]>([]);
 
-  const appendLog = useCallback((source: string, detail: string) => {
-    setLogs((current) =>
-      [
-        {
-          id: current.length + 1,
-          source,
-          detail,
-          at: new Date().toISOString(),
-        },
-        ...current,
-      ].slice(0, 80),
-    );
-  }, []);
+	const appendLog = useCallback((source: string, detail: string) => {
+		setLogs((current) =>
+			[
+				{
+					id: current.length + 1,
+					source,
+					detail,
+					at: new Date().toISOString(),
+				},
+				...current,
+			].slice(0, 80),
+		);
+	}, []);
 
-  useEffect(() => {
-    window.__SANDPACK_DEBUG__ = true;
+	useEffect(() => {
+		window.__SANDPACK_DEBUG__ = DEBUG_EVENT_LOGS_ENABLED;
 
-    const handleDebug = (event: Event) => {
-      const detail = (event as CustomEvent<{
-        event: string;
-        payload: Record<string, unknown>;
-      }>).detail;
+		if (!DEBUG_EVENT_LOGS_ENABLED) {
+			return () => {
+				window.__SANDPACK_DEBUG__ = false;
+			};
+		}
 
-      appendLog('debug', `${detail.event} ${JSON.stringify(detail.payload)}`);
-    };
+		const handleDebug = (event: Event) => {
+			const detail = (
+				event as CustomEvent<{
+					event: string;
+					payload: Record<string, unknown>;
+				}>
+			).detail;
 
-    window.addEventListener('sandpack-debug', handleDebug as EventListener);
-    return () => {
-      window.removeEventListener('sandpack-debug', handleDebug as EventListener);
-    };
-  }, [appendLog]);
+			appendLog('debug', `${detail.event} ${JSON.stringify(detail.payload)}`);
+		};
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const payload = event.data as { source?: string; label?: string };
-      if (payload?.source !== PREVIEW_SOURCE || !payload.label) {
-        return;
-      }
+		window.addEventListener('sandpack-debug', handleDebug as EventListener);
+		return () => {
+			window.removeEventListener(
+				'sandpack-debug',
+				handleDebug as EventListener,
+			);
+			window.__SANDPACK_DEBUG__ = false;
+		};
+	}, [appendLog]);
 
-      setPreviewLabel(payload.label);
-      appendLog('preview', payload.label);
-    };
+	useEffect(() => {
+		const handleMessage = (event: MessageEvent) => {
+			const payload = event.data as {source?: string; label?: string};
+			if (payload?.source !== PREVIEW_SOURCE || !payload.label) {
+				return;
+			}
 
-    window.addEventListener('message', handleMessage);
-    return () => {
-      window.removeEventListener('message', handleMessage);
-    };
-  }, [appendLog]);
+			setPreviewLabel(payload.label);
+			appendLog('preview', payload.label);
+		};
 
-  const files = useMemo(
-    () => ({
-      '/App.tsx': toSandpackSource(buildRawAppSource(BLANK_HUE)),
-      ...buildCoreFiles(),
-    }),
-    [],
-  );
+		window.addEventListener('message', handleMessage);
+		return () => {
+			window.removeEventListener('message', handleMessage);
+		};
+	}, [appendLog]);
 
-  const targetHue = HUE_SEQUENCE[hueIndex % HUE_SEQUENCE.length];
-  const statusClassName = useMemo(() => {
-    if (previewLabel === expectedLabel) {
-      return 'status-pill good';
-    }
+	const files = useMemo(
+		() => ({
+			'/index.tsx': {
+				code: buildSandboxEntryCode(),
+				hidden: true,
+			},
+			'/App.tsx': toSandpackSource(buildRawAppSource(BLANK_HUE)),
+			...buildCoreFiles(),
+		}),
+		[],
+	);
 
-    return 'status-pill bad';
-  }, [expectedLabel, previewLabel]);
+	const targetHue = HUE_SEQUENCE[hueIndex % HUE_SEQUENCE.length];
+	const statusClassName = useMemo(() => {
+		if (previewLabel === expectedLabel) {
+			return 'status-pill good';
+		}
 
-  return (
-    <div className="app-shell">
-      <div className="page">
-        <div className="header">
-          <div>
-            <h1>Compact `color-kit`-style Heavy Repro</h1>
-            <p>Hidden files, import rewriting, `react-ts`, delayed recompiles, and manual refresh remounts.</p>
-          </div>
-          <span className={statusClassName}>expected {expectedLabel} | preview {previewLabel}</span>
-        </div>
+		return 'status-pill bad';
+	}, [expectedLabel, previewLabel]);
 
-        <section className="controls">
-          <div className="actions">
-            <button
-              type="button"
-              onClick={() => {
-                setHueIndex((value) => (value + 1) % HUE_SEQUENCE.length);
-                setUpdateNonce((value) => value + 1);
-              }}
-            >
-              Apply next hue update
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setPreviewLabel('waiting');
-                setExpectedLabel(`hue-${BLANK_HUE}`);
-                setRefreshNonce((value) => value + 1);
-                appendLog('host', 'manual refresh remount');
-              }}
-            >
-              Remount preview
-            </button>
-            <button type="button" onClick={() => setLogs([])}>
-              Clear logs
-            </button>
-          </div>
-        </section>
+	return (
+		<div className='app-shell'>
+			<div className='page'>
+				<div className='header'>
+					<div>
+						<h1>Compact `color-kit`-style Heavy Repro</h1>
+						<p>
+							Hidden files, import rewriting, `react-ts`, delayed recompiles,
+							and manual refresh remounts.
+						</p>
+					</div>
+					<span className={statusClassName}>
+						expected {expectedLabel} | preview {previewLabel}
+					</span>
+				</div>
 
-        <section className="metrics">
-          <div className="metric-row">
-            <span>Sandpack status</span>
-            <code>{status}</code>
-          </div>
-          <div className="metric-row">
-            <span>Expected label</span>
-            <code>{expectedLabel}</code>
-          </div>
-          <div className="metric-row">
-            <span>Preview label</span>
-            <code>{previewLabel}</code>
-          </div>
-          <div className="metric-row">
-            <span>Visible source hue</span>
-            <code>{targetHue}</code>
-          </div>
-        </section>
+				<section className='controls'>
+					<div className='actions'>
+						<button
+							type='button'
+							onClick={() => {
+								setHueIndex((value) => (value + 1) % HUE_SEQUENCE.length);
+								setUpdateNonce((value) => value + 1);
+							}}
+						>
+							Apply next hue update
+						</button>
+						<button
+							type='button'
+							onClick={() => {
+								setPreviewLabel('waiting');
+								setExpectedLabel(`hue-${BLANK_HUE}`);
+								setRefreshNonce((value) => value + 1);
+								appendLog('host', 'manual refresh remount');
+							}}
+						>
+							Remount preview
+						</button>
+						<button type='button' onClick={() => setLogs([])}>
+							Clear logs
+						</button>
+					</div>
+				</section>
 
-        <div className="layout">
-          <section className="editor-panel">
-            <SandpackProvider
-              key={refreshNonce}
-              template="react-ts"
-              theme={sandpackDark}
-              files={files}
-              options={{
-                autorun: true,
-                bundlerTimeOut: 20000,
-                initMode: 'immediate',
-                recompileMode: 'delayed',
-                recompileDelay: 200,
-              }}
-              customSetup={{
-                dependencies: {
-                  react: '18.2.0',
-                  'react-dom': '18.2.0',
-                },
-              }}
-            >
-              <SandpackAutoRun onLog={appendLog} />
-              <HeavyController
-                updateNonce={updateNonce}
-                targetHue={targetHue}
-                onStatus={setStatus}
-                onExpectedLabel={setExpectedLabel}
-                onLog={appendLog}
-              />
-              <SandpackLayout>
-                <SandpackCodeEditor showTabs={false} />
-                <SandpackPreview showNavigator={false} showOpenInCodeSandbox={false} />
-              </SandpackLayout>
-            </SandpackProvider>
-          </section>
+				<section className='metrics'>
+					<div className='metric-row'>
+						<span>Sandpack status</span>
+						<code>{status}</code>
+					</div>
+					<div className='metric-row'>
+						<span>Expected label</span>
+						<code>{expectedLabel}</code>
+					</div>
+					<div className='metric-row'>
+						<span>Preview label</span>
+						<code>{previewLabel}</code>
+					</div>
+					<div className='metric-row'>
+						<span>Visible source hue</span>
+						<code>{targetHue}</code>
+					</div>
+				</section>
 
-          <section className="logs">
-            <h2>Event log</h2>
-            <ul className="log-list">
-              {logs.map((entry) => (
-                <li className="log-item" key={entry.id}>
-                  <header>
-                    <strong>{entry.source}</strong>
-                    <span>{entry.at}</span>
-                  </header>
-                  <code>{entry.detail}</code>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
-      </div>
-    </div>
-  );
+				<div className='layout'>
+					<section className='editor-panel'>
+						<SandpackProvider
+							key={refreshNonce}
+							template='react-ts'
+							theme={sandpackDark}
+							files={files}
+							options={{
+								autorun: false,
+								bundlerTimeOut: 20000,
+								initMode: 'immediate',
+								recompileMode: 'delayed',
+								recompileDelay: 200,
+							}}
+							customSetup={{
+								dependencies: {
+									react: '18.2.0',
+									'react-dom': '18.2.0',
+								},
+							}}
+						>
+							<SandpackAutoRun onLog={appendLog} />
+							<HeavyController
+								updateNonce={updateNonce}
+								targetHue={targetHue}
+								onStatus={setStatus}
+								onExpectedLabel={setExpectedLabel}
+								onLog={appendLog}
+							/>
+							<SandpackLayout>
+								<SandpackCodeEditor showTabs={false} />
+								<SandpackPreview
+									showNavigator={false}
+									showOpenInCodeSandbox={false}
+								/>
+							</SandpackLayout>
+						</SandpackProvider>
+					</section>
+
+					<section className='logs'>
+						<h2>Event log</h2>
+						<ul className='log-list'>
+							{logs.map((entry) => (
+								<li className='log-item' key={entry.id}>
+									<header>
+										<strong>{entry.source}</strong>
+										<span>{entry.at}</span>
+									</header>
+									<code>{entry.detail}</code>
+								</li>
+							))}
+						</ul>
+					</section>
+				</div>
+			</div>
+		</div>
+	);
 }

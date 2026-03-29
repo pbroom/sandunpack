@@ -138,12 +138,15 @@ export const useClient: UseClient = (
     Record<string, Record<string, UnsubscribeFunction>>
   >({});
   const unsubscribe = useRef<() => void | undefined>();
+  const activeGlobalClientId = useRef<string | null>(null);
   const queuedListeners = useRef<
     Record<string, Record<string, ListenerFunction>>
   >({ global: {} });
   const debounceHook = useRef<number | undefined>();
   const prevEnvironment = useRef(filesState.environment);
   const lastUpdateDebugSignature = useRef<string | null>(null);
+  const runSandpackPromise = useRef<Promise<void> | null>(null);
+  const queuedRunSandpackClientIds = useRef<Set<string>>(new Set());
 
   const asyncSandpackId = useAsyncSandpackId(filesState.files);
   const sandboxSummary = useMemo(
@@ -163,6 +166,47 @@ export const useClient: UseClient = (
     },
     []
   );
+  const clearTimeoutHook = useCallback((payload: Record<string, unknown>) => {
+    if (!timeoutHook.current) {
+      return;
+    }
+
+    clearTimeout(timeoutHook.current);
+    timeoutHook.current = null;
+    emitDebugEvent("react:timeout:clear", {
+      activeClients: Object.keys(clients.current),
+      activeGlobalClientId: activeGlobalClientId.current,
+      ...payload,
+      clientId:
+        typeof payload.clientId === "string"
+          ? payload.clientId
+          : activeGlobalClientId.current ?? "unknown",
+    });
+  }, []);
+  const queueRunSandpack = useCallback(
+    (clientId: string, payload: Record<string, unknown>) => {
+      if (runSandpackPromise.current === null) {
+        return;
+      }
+
+      const queuedClientIds = queuedRunSandpackClientIds.current;
+      const queueSize = queuedClientIds.size;
+
+      queuedClientIds.add(clientId);
+
+      if (queuedClientIds.size === queueSize) {
+        return;
+      }
+
+      emitDebugEvent("react:run:queue-follow-up", {
+        clientId,
+        queuedClientIds: Array.from(queuedClientIds),
+        registeredClientIds: Object.keys(registeredIframes.current),
+        ...payload,
+      });
+    },
+    []
+  );
 
   /**
    * Callbacks
@@ -173,6 +217,14 @@ export const useClient: UseClient = (
       clientId: string,
       clientPropsOverride?: ClientPropsOverride
     ): Promise<void> => {
+      const shouldManageGlobalClient =
+        activeGlobalClientId.current === null ||
+        activeGlobalClientId.current === clientId;
+
+      if (shouldManageGlobalClient && activeGlobalClientId.current === null) {
+        activeGlobalClientId.current = clientId;
+      }
+
       // Clean up any existing clients that
       // have been created with the given id
       if (clients.current[clientId]) {
@@ -181,6 +233,14 @@ export const useClient: UseClient = (
           previousStatus: clients.current[clientId].status,
         });
         clients.current[clientId].destroy();
+
+        if (
+          activeGlobalClientId.current === clientId &&
+          typeof unsubscribe.current === "function"
+        ) {
+          unsubscribe.current();
+          unsubscribe.current = undefined;
+        }
       }
 
       options ??= {};
@@ -188,9 +248,8 @@ export const useClient: UseClient = (
 
       const timeOut = options?.bundlerTimeOut ?? BUNDLER_TIMEOUT;
 
-      if (timeoutHook.current) {
-        clearTimeout(timeoutHook.current);
-        emitDebugEvent("react:timeout:clear", {
+      if (shouldManageGlobalClient) {
+        clearTimeoutHook({
           clientId,
           reason: "create-client",
         });
@@ -201,7 +260,7 @@ export const useClient: UseClient = (
        * This subscription is for global states like error and timeout, so no need for a per client listen
        * Also, set the timeout timer only when the first client is instantiated
        */
-      const shouldSetTimeout = typeof unsubscribe.current !== "function";
+      const shouldSetTimeout = shouldManageGlobalClient;
 
       if (shouldSetTimeout) {
         emitDebugEvent("react:timeout:register", {
@@ -214,6 +273,7 @@ export const useClient: UseClient = (
             timeoutMs: timeOut,
             clientCount: Object.keys(clients.current).length,
           });
+          timeoutHook.current = null;
           unregisterAllClients();
           setState((prev) => ({ ...prev, status: "timeout" }));
         }, timeOut);
@@ -274,11 +334,13 @@ export const useClient: UseClient = (
         queuedClientListeners: Object.keys(
           queuedListeners.current[clientId] ?? {}
         ).length,
-        queuedGlobalListeners: Object.keys(queuedListeners.current.global).length,
+        queuedGlobalListeners: Object.keys(queuedListeners.current.global)
+          .length,
       });
 
-      if (typeof unsubscribe.current !== "function") {
+      if (shouldManageGlobalClient) {
         unsubscribe.current = client.listen(handleMessage);
+        activeGlobalClientId.current = clientId;
       }
 
       unsubscribeClientListeners.current[clientId] =
@@ -321,6 +383,7 @@ export const useClient: UseClient = (
       });
     },
     [
+      clearTimeoutHook,
       filesState.environment,
       filesState.files,
       options.startRoute,
@@ -330,35 +393,140 @@ export const useClient: UseClient = (
     ]
   );
 
+  const destroyBundler = useCallback(
+    (clientId: string, shouldDropRegistration: boolean): void => {
+      const client = clients.current[clientId];
+      if (client) {
+        emitDebugEvent("react:unregister-bundler", {
+          clientId,
+          clientStatus: client.status,
+          reason: "destroy-client",
+          dropRegistration: shouldDropRegistration,
+        });
+        client.destroy();
+        client.iframe.contentWindow?.location.replace("about:blank");
+        client.iframe.removeAttribute("src");
+        delete clients.current[clientId];
+      } else {
+        emitDebugEvent("react:unregister-bundler", {
+          clientId,
+          reason: "drop-registration",
+          dropRegistration: shouldDropRegistration,
+        });
+      }
+
+      if (shouldDropRegistration) {
+        delete registeredIframes.current[clientId];
+      }
+
+      clearTimeoutHook({
+        clientId,
+        reason: "unregister-bundler",
+      });
+
+      if (activeGlobalClientId.current === clientId) {
+        if (typeof unsubscribe.current === "function") {
+          unsubscribe.current();
+          unsubscribe.current = undefined;
+        }
+
+        activeGlobalClientId.current = null;
+      }
+
+      const unsubscribeQueuedClients = Object.values(
+        unsubscribeClientListeners.current[clientId] ?? {}
+      ) as UnsubscribeFunction[];
+
+      // Unsubscribing all listener registered
+      unsubscribeQueuedClients.forEach((unsubscribe) => {
+        unsubscribe();
+      });
+
+      // Keep running if it still have clients
+      const status =
+        Object.keys(clients.current).length > 0 ? "running" : "idle";
+
+      setState((prev) => ({ ...prev, status }));
+      emitDebugEvent("react:unregister-bundler:complete", {
+        clientId,
+        nextStatus: status,
+        remainingClients: Object.keys(clients.current),
+      });
+    },
+    [clearTimeoutHook]
+  );
+
   const unregisterAllClients = useCallback((): void => {
     emitDebugEvent("react:clients:unregister-all", {
       clientIds: Object.keys(clients.current),
     });
-    Object.keys(clients.current).map(unregisterBundler);
+    Object.keys(clients.current).forEach((clientId) => {
+      destroyBundler(clientId, false);
+    });
 
     if (typeof unsubscribe.current === "function") {
       unsubscribe.current();
       unsubscribe.current = undefined;
     }
-  }, []);
+
+    activeGlobalClientId.current = null;
+  }, [destroyBundler]);
 
   const runSandpack = useCallback(async (): Promise<void> => {
-    emitDebugEvent("react:run:start", {
-      registeredClientIds: Object.keys(registeredIframes.current),
-      ...sandboxSummary,
-    });
-    await Promise.all(
-      Object.entries(registeredIframes.current).map(
-        async ([clientId, { iframe, clientPropsOverride = {} }]) => {
-          await createClient(iframe, clientId, clientPropsOverride);
-        }
-      )
-    );
+    if (runSandpackPromise.current) {
+      emitDebugEvent("react:run:reuse-inflight", {
+        registeredClientIds: Object.keys(registeredIframes.current),
+        queuedClientIds: Array.from(queuedRunSandpackClientIds.current),
+      });
+      return runSandpackPromise.current;
+    }
 
-    setState((prev) => ({ ...prev, error: null, status: "running" }));
-    emitDebugEvent("react:run:complete", {
-      activeClients: Object.keys(clients.current).length,
-    });
+    const nextRun = (async () => {
+      let clientIdsToLoad = Object.keys(registeredIframes.current);
+
+      do {
+        emitDebugEvent("react:run:start", {
+          registeredClientIds: clientIdsToLoad,
+          ...sandboxSummary,
+        });
+        await Promise.all(
+          clientIdsToLoad.map(async (clientId) => {
+            const registration = registeredIframes.current[clientId];
+
+            if (!registration) {
+              return;
+            }
+
+            const { iframe, clientPropsOverride = {} } = registration;
+            await createClient(iframe, clientId, clientPropsOverride);
+          })
+        );
+
+        setState((prev) => ({ ...prev, error: null, status: "running" }));
+        const queuedClientIds = Array.from(
+          queuedRunSandpackClientIds.current
+        ).filter(
+          (clientId) =>
+            typeof registeredIframes.current[clientId] !== "undefined"
+        );
+        queuedRunSandpackClientIds.current.clear();
+        emitDebugEvent("react:run:complete", {
+          activeClients: Object.keys(clients.current).length,
+          queuedClientIds,
+        });
+        clientIdsToLoad = queuedClientIds;
+      } while (clientIdsToLoad.length > 0);
+    })();
+
+    runSandpackPromise.current = nextRun;
+
+    try {
+      await nextRun;
+    } finally {
+      if (runSandpackPromise.current === nextRun) {
+        runSandpackPromise.current = null;
+      }
+    }
   }, [createClient, sandboxSummary]);
 
   intersectionObserverCallback.current = (
@@ -417,7 +585,6 @@ export const useClient: UseClient = (
     options?.initModeObserverOptions,
     runSandpack,
     state.initMode,
-    unregisterAllClients,
   ]);
 
   const registerBundler = useCallback(
@@ -439,88 +606,61 @@ export const useClient: UseClient = (
         startRoute: clientPropsOverride?.startRoute ?? options?.startRoute,
       });
 
+      if (state.status !== "running") {
+        queueRunSandpack(clientId, {
+          reason: "register-bundler",
+          status: state.status,
+        });
+      }
+
       if (state.status === "running") {
         await createClient(iframe, clientId, clientPropsOverride);
       }
     },
-    [createClient, options?.startRoute, state.status]
+    [createClient, options?.startRoute, queueRunSandpack, state.status]
   );
 
-  const unregisterBundler = (clientId: string): void => {
-    const client = clients.current[clientId];
-    if (client) {
-      emitDebugEvent("react:unregister-bundler", {
-        clientId,
-        clientStatus: client.status,
-        reason: "destroy-client",
-      });
-      client.destroy();
-      client.iframe.contentWindow?.location.replace("about:blank");
-      client.iframe.removeAttribute("src");
-      delete clients.current[clientId];
-    } else {
-      emitDebugEvent("react:unregister-bundler", {
-        clientId,
-        reason: "drop-registration",
-      });
-      delete registeredIframes.current[clientId];
-    }
-
-    if (timeoutHook.current) {
-      clearTimeout(timeoutHook.current);
-      emitDebugEvent("react:timeout:clear", {
-        clientId,
-        reason: "unregister-bundler",
-      });
-    }
-
-    const unsubscribeQueuedClients = Object.values(
-      unsubscribeClientListeners.current[clientId] ?? {}
-    );
-
-    // Unsubscribing all listener registered
-    unsubscribeQueuedClients.forEach((listenerOfClient) => {
-      const listenerFunctions = Object.values(listenerOfClient);
-      listenerFunctions.forEach((unsubscribe) => unsubscribe());
-    });
-
-    // Keep running if it still have clients
-    const status = Object.keys(clients.current).length > 0 ? "running" : "idle";
-
-    setState((prev) => ({ ...prev, status }));
-    emitDebugEvent("react:unregister-bundler:complete", {
-      clientId,
-      nextStatus: status,
-      remainingClients: Object.keys(clients.current),
-    });
-  };
+  const unregisterBundler = useCallback(
+    (clientId: string): void => {
+      destroyBundler(clientId, true);
+    },
+    [destroyBundler]
+  );
 
   const handleMessage = (msg: SandpackMessage): void => {
     emitDebugEvent("react:message", {
       type: msg.type,
       action: msg.type === "action" ? msg.action : undefined,
       status: msg.type === "status" ? msg.status : undefined,
-      hasCompilationError: msg.type === "done" ? msg.compilatonError : undefined,
+      hasCompilationError:
+        msg.type === "done" ? msg.compilatonError : undefined,
       entry: msg.type === "state" ? msg.state.entry : undefined,
     });
 
-    if (msg.type === "start") {
-      setState((prev) => ({ ...prev, error: null }));
-    } else if (msg.type === "state") {
+    if (msg.type === "state") {
       setState((prev) => ({ ...prev, bundlerState: msg.state }));
     } else if (
       (msg.type === "done" && !msg.compilatonError) ||
       msg.type === "connected"
     ) {
-      if (timeoutHook.current) {
-        clearTimeout(timeoutHook.current);
-      }
+      // Keep the last runtime error visible until the client actually recovers.
+      // Some runtimes emit follow-up `start` messages while retrying, which would
+      // otherwise hide a fatal error before any successful reconnect/compile.
+      clearTimeoutHook({
+        reason: msg.type === "connected" ? "message-connected" : "message-done",
+        messageType: msg.type,
+      });
 
       setState((prev) => ({ ...prev, error: null }));
     } else if (msg.type === "action" && msg.action === "show-error") {
-      if (timeoutHook.current) {
-        clearTimeout(timeoutHook.current);
-      }
+      clearTimeoutHook({
+        reason: "message-show-error",
+        messageType: msg.type,
+        action: msg.action,
+        title: msg.title,
+        path: msg.path,
+        errorMessage: msg.message,
+      });
 
       setState((prev) => ({ ...prev, error: extractErrorDetails(msg) }));
     } else if (
@@ -777,9 +917,11 @@ export const useClient: UseClient = (
         unsubscribe.current();
       }
 
-      if (timeoutHook.current) {
-        clearTimeout(timeoutHook.current);
-      }
+      activeGlobalClientId.current = null;
+
+      clearTimeoutHook({
+        reason: "unmount-client",
+      });
 
       if (debounceHook.current) {
         clearTimeout(debounceHook.current);
@@ -789,7 +931,7 @@ export const useClient: UseClient = (
         intersectionObserver.current.disconnect();
       }
     };
-  }, []);
+  }, [clearTimeoutHook]);
 
   return [
     state,

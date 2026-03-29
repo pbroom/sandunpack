@@ -19,7 +19,8 @@
 		"dev:minimal-race-react": "pnpm --filter minimal-startup-race-react dev",
 		"dev:minimal-race-client": "pnpm --filter minimal-startup-race-client dev",
 		"dev:timeout-restart": "pnpm --filter timeout-restart-repro dev",
-		"dev:heavy-repro": "pnpm --filter color-kit-plane-api-repro dev"
+		"dev:heavy-repro": "pnpm --filter color-kit-plane-api-repro dev",
+		"dev:heavy-timeout-disconnect": "pnpm --filter heavy-timeout-disconnect-repro dev"
 	},
 	"pnpm": {
 		"onlyBuiltDependencies": [
